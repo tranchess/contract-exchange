@@ -597,6 +597,7 @@ describe("Staking", function () {
             await staking.deposit(TRANCHE_A, deposit2);
             await staking.deposit(TRANCHE_A, deposit3);
             await advanceBlockAtTime(checkpointTimestamp + 100);
+            await setAutomine(true);
 
             await advanceBlockAtTime(checkpointTimestamp + 500);
             const { rewards1, rewards2 } = rewardsAfterDoublingTotal(100, 500);
