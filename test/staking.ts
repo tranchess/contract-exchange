@@ -47,6 +47,10 @@ async function setNextBlockTime(time: number) {
     await ethers.provider.send("evm_setNextBlockTimestamp", [time]);
 }
 
+async function setAutomine(flag: boolean) {
+    await ethers.provider.send("evm_setAutomine", [flag]);
+}
+
 describe("Staking", function () {
     interface FixtureWalletMap {
         readonly [name: string]: Wallet;
@@ -577,6 +581,25 @@ describe("Staking", function () {
 
             await advanceBlockAtTime(checkpointTimestamp + 5678);
             const { rewards1, rewards2 } = rewardsAfterReducingTotal(1234, 5678);
+            expect(await staking.callStatic["claimableRewards"](addr1)).to.equal(rewards1);
+            expect(await staking.callStatic["claimableRewards"](addr2)).to.equal(rewards2);
+        });
+
+        it("Should handle multiple checkpoints in the same block correctly", async function () {
+            // Deposit some Share A to double the total reward weight, in three transactions
+            const totalDeposit = TOTAL_WEIGHT.mul(REWARD_WEIGHT_P).div(REWARD_WEIGHT_A);
+            const deposit1 = totalDeposit.div(4);
+            const deposit2 = totalDeposit.div(3);
+            const deposit3 = totalDeposit.sub(deposit1).sub(deposit2);
+            await shareA.mock.transferFrom.returns(true);
+            await setAutomine(false);
+            await staking.deposit(TRANCHE_A, deposit1);
+            await staking.deposit(TRANCHE_A, deposit2);
+            await staking.deposit(TRANCHE_A, deposit3);
+            await advanceBlockAtTime(checkpointTimestamp + 100);
+
+            await advanceBlockAtTime(checkpointTimestamp + 500);
+            const { rewards1, rewards2 } = rewardsAfterDoublingTotal(100, 500);
             expect(await staking.callStatic["claimableRewards"](addr1)).to.equal(rewards1);
             expect(await staking.callStatic["claimableRewards"](addr2)).to.equal(rewards2);
         });
