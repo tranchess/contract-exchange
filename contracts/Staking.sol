@@ -29,7 +29,7 @@ abstract contract Staking is ITrancheIndex {
 
     uint256 private constant REWARD_WEIGHT_A = 1;
     uint256 private constant REWARD_WEIGHT_B = 3;
-    uint256 private constant REWARD_WEIGHT_P = REWARD_WEIGHT_A + REWARD_WEIGHT_B;
+    uint256 private constant REWARD_WEIGHT_P = 2;
 
     IFund public immutable fund;
     address public immutable tokenP;
@@ -104,9 +104,9 @@ abstract contract Staking is ITrancheIndex {
         uint256 amountB
     ) public pure returns (uint256) {
         return
-            amountP.add(amountA.mul(REWARD_WEIGHT_A) / REWARD_WEIGHT_P).add(
-                amountB.mul(REWARD_WEIGHT_B) / REWARD_WEIGHT_P
-            );
+            amountP.mul(REWARD_WEIGHT_P).add(amountA.mul(REWARD_WEIGHT_A)).add(
+                amountB.mul(REWARD_WEIGHT_B)
+            ) / REWARD_WEIGHT_P;
     }
 
     function totalSupply(uint256 tranche) external view returns (uint256) {
@@ -213,6 +213,20 @@ abstract contract Staking is ITrancheIndex {
         }
         _checkpoint(conversionSize);
         _userCheckpoint(account, targetVersion);
+    }
+
+    /// @notice Return claimable rewards of an account till now.
+    ///
+    ///         This function should be call as a "view" function off-chain to get
+    ///         the return value, e.g. using `contract.claimableRewards.call(account)` in web3
+    ///         or `contract.callStatic["claimableRewards"](account)` in ethers.js.
+    /// @param account Address of an account
+    /// @return Amount of claimable rewards
+    function claimableRewards(address account) external returns (uint256) {
+        uint256 conversionSize = fund.getConversionSize();
+        _checkpoint(conversionSize);
+        _userCheckpoint(account, conversionSize);
+        return _claimableRewards[account];
     }
 
     /// @notice Convert balances and claim the rewards
