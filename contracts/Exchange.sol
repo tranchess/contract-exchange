@@ -486,20 +486,6 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         _clear(periodID, sharesP, sharesA, sharesB, quoteAmountP + quoteAmountA + quoteAmountB);
     }
 
-    /// @dev Place an ask order
-    /// @param tranche Tranche of the base asset
-    /// @param makerAddress Maker address
-    /// @param pdLevel Premium-discount level
-    /// @param baseAmount Base asset amount
-    /// @param conversionID Current conversion ID. Revert if conversion is triggered simultaneously
-    function _placeAsk(
-        uint256 tranche,
-        address makerAddress,
-        uint256 pdLevel,
-        uint256 baseAmount,
-        uint256 conversionID
-    ) internal returns (uint256 orderIndex) {}
-
     /// @dev Cancel a bid order
     /// @param conversionID Order's conversion ID
     /// @param tranche Tranche of the order's base asset
