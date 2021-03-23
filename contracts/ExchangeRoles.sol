@@ -9,6 +9,8 @@ import "./interfaces/IVotingEscrow.sol";
 /// @notice Exchange role management
 /// @author Tranchess
 abstract contract ExchangeRoles {
+    event AppliedForMaker(address account, uint256 expiration);
+
     /// @notice Voting Escrow.
     IVotingEscrow public immutable votingEscrow;
 
@@ -44,9 +46,8 @@ abstract contract ExchangeRoles {
     function applyForMaker() external {
         // The membership will be valid until the current vote-locked governance
         // token balance drop below the requirement.
-        makerExpiration[msg.sender] = votingEscrow.getTimestampDropBelow(
-            msg.sender,
-            makerRequirement
-        );
+        uint256 expiration = votingEscrow.getTimestampDropBelow(msg.sender, makerRequirement);
+        makerExpiration[msg.sender] = expiration;
+        emit AppliedForMaker(msg.sender, expiration);
     }
 }

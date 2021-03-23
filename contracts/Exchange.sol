@@ -28,6 +28,9 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         uint256 price;
         uint256 fillableBase;
         uint256 fillableQuote;
+        uint256 lastMatchedPDLevel;
+        uint256 lastMatchedOrderIndex;
+        uint256 lastMatchedAmount;
     }
 
     /// @notice A maker bid order is placed.
@@ -65,6 +68,81 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         uint256 clientOrderID,
         uint256 orderIndex
     );
+
+    /// @notice A maker bid order is canceled.
+    /// @param maker Account placing the order
+    /// @param tranche Tranche of the share
+    /// @param pdLevel Premium-discount level
+    /// @param quoteAmount Original amount of quote asset in the order
+    /// @param conversionID The latest conversion ID when the order is placed
+    /// @param orderIndex Index of the order in the order queue
+    /// @param fillable Unfilled amount when the order is canceled
+    event BidOrderCanceled(
+        address maker,
+        uint256 tranche,
+        uint256 pdLevel,
+        uint256 quoteAmount,
+        uint256 conversionID,
+        uint256 orderIndex,
+        uint256 fillable
+    );
+
+    /// @notice A maker ask order is canceled.
+    /// @param maker Account placing the order
+    /// @param tranche Tranche of the share to sell
+    /// @param pdLevel Premium-discount level
+    /// @param baseAmount Original amount of base asset in the order
+    /// @param conversionID The latest conversion ID when the order is placed
+    /// @param orderIndex Index of the order in the order queue
+    /// @param fillable Unfilled amount when the order is canceled
+    event AskOrderCanceled(
+        address maker,
+        uint256 tranche,
+        uint256 pdLevel,
+        uint256 baseAmount,
+        uint256 conversionID,
+        uint256 orderIndex,
+        uint256 fillable
+    );
+
+    /// @notice Matching result of a taker bid order.
+    /// @param taker Account placing the order
+    /// @param tranche Tranche of the share
+    /// @param quoteAmount Matched amount of quote asset
+    /// @param conversionID Conversion ID of this trade
+    /// @param lastMatchedPDLevel Premium-discount level of the last matched maker order
+    /// @param lastMatchedOrderIndex Index of the last matched maker order in its order queue
+    /// @param lastMatchedBaseAmount Matched base asset amount of the last matched maker order
+    event BuyTrade(
+        address taker,
+        uint256 tranche,
+        uint256 quoteAmount,
+        uint256 conversionID,
+        uint256 lastMatchedPDLevel,
+        uint256 lastMatchedOrderIndex,
+        uint256 lastMatchedBaseAmount
+    );
+
+    /// @notice Matching result of a taker ask order.
+    /// @param taker Account placing the order
+    /// @param tranche Tranche of the share
+    /// @param baseAmount Matched amount of base asset
+    /// @param conversionID Conversion ID of this trade
+    /// @param lastMatchedPDLevel Premium-discount level of the last matched maker order
+    /// @param lastMatchedOrderIndex Index of the last matched maker order in its order queue
+    /// @param lastMatchedQuoteAmount Matched quote asset amount of the last matched maker order
+    event SellTrade(
+        address taker,
+        uint256 tranche,
+        uint256 baseAmount,
+        uint256 conversionID,
+        uint256 lastMatchedPDLevel,
+        uint256 lastMatchedOrderIndex,
+        uint256 lastMatchedQuoteAmount
+    );
+
+    event MakerSettled(address account, uint256 epoch);
+    event TakerSettled(address account, uint256 epoch);
 
     uint256 private constant EPOCH = 30 minutes; // An exchange epoch is 30 minutes long
 
@@ -468,6 +546,8 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
             _settleMaker(msg.sender, TRANCHE_B, estimatedNavB, periodID);
 
         _clear(periodID, sharesP, sharesA, sharesB, quoteAmountP + quoteAmountA + quoteAmountB);
+
+        emit MakerSettled(msg.sender, periodID);
     }
 
     /// @notice Settle trades of a specified epoch for takers
@@ -484,6 +564,8 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
             _settleTaker(msg.sender, TRANCHE_B, estimatedNavB, periodID);
 
         _clear(periodID, sharesP, sharesA, sharesB, quoteAmountP + quoteAmountA + quoteAmountB);
+
+        emit TakerSettled(msg.sender, periodID);
     }
 
     /// @dev Cancel a bid order
@@ -505,6 +587,15 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         Order memory order = orderQueue.list[index];
         require(order.makerAddress == makerAddress, "invalid maker address");
 
+        emit BidOrderCanceled(
+            makerAddress,
+            tranche,
+            pdLevel,
+            order.amount,
+            conversionID,
+            index,
+            order.fillable
+        );
         _removeOrder(orderQueue, index);
 
         // Update bestBid
@@ -542,6 +633,15 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         require(order.makerAddress != address(0), "invalid order");
         require(order.makerAddress == makerAddress, "invalid maker address");
 
+        emit AskOrderCanceled(
+            makerAddress,
+            tranche,
+            pdLevel,
+            order.amount,
+            conversionID,
+            index,
+            order.fillable
+        );
         _removeOrder(orderQueue, index);
 
         // Update bestAsk
@@ -589,8 +689,8 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
             mostRecentConversionPendingTrades[periodID] = conversionID;
         }
 
+        Context memory context;
         for (uint256 i = bestAsks[conversionID][tranche]; i <= maxPDLevel; i++) {
-            Context memory context;
             context.pd = i.mul(PD_TICK).add(MIN_PD);
             context.price = context.pd.multiplyDecimal(estimatedNav);
             OrderQueue storage orderQueue = asks[conversionID][tranche][i];
@@ -643,6 +743,9 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
                 if (order.fillable == 0) {
                     _removeOrder(orderQueue, index);
                 }
+                context.lastMatchedPDLevel = i;
+                context.lastMatchedOrderIndex = index;
+                context.lastMatchedAmount = currentTrade.reservedBase;
                 index = order.next;
             }
 
@@ -654,13 +757,26 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
             }
         }
 
-        // TODO emit event for taker
-        IERC20(quoteAssetAddress).transferFrom(msg.sender, address(this), totalTrade.frozenQuote);
-
-        pendingTrades[takerAddress][tranche][periodID].takerBuy = _addBuyTrade(
-            pendingTrades[takerAddress][tranche][periodID].takerBuy,
-            totalTrade
-        );
+        if (totalTrade.frozenQuote > 0) {
+            IERC20(quoteAssetAddress).transferFrom(
+                takerAddress,
+                address(this),
+                totalTrade.frozenQuote
+            );
+            pendingTrades[takerAddress][tranche][periodID].takerBuy = _addBuyTrade(
+                pendingTrades[takerAddress][tranche][periodID].takerBuy,
+                totalTrade
+            );
+            emit BuyTrade(
+                takerAddress,
+                tranche,
+                totalTrade.frozenQuote,
+                conversionID,
+                context.lastMatchedPDLevel,
+                context.lastMatchedOrderIndex,
+                context.lastMatchedAmount
+            );
+        }
     }
 
     /// @dev Sell share
@@ -688,8 +804,8 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
             mostRecentConversionPendingTrades[periodID] = conversionID;
         }
 
+        Context memory context;
         for (uint256 i = bestBids[conversionID][tranche] + 1; i > minPDLevel; i--) {
-            Context memory context;
             context.pd = (i - 1).mul(PD_TICK).add(MIN_PD);
             context.price = context.pd.multiplyDecimal(estimatedNav);
             OrderQueue storage orderQueue = bids[conversionID][tranche][i - 1];
@@ -743,6 +859,9 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
                 if (order.fillable == 0) {
                     _removeOrder(orderQueue, index);
                 }
+                context.lastMatchedPDLevel = i;
+                context.lastMatchedOrderIndex = index;
+                context.lastMatchedAmount = currentTrade.reservedQuote;
                 index = order.next;
             }
 
@@ -754,13 +873,22 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
             }
         }
 
-        // TODO emit event for taker
-        _tradeAvailable(tranche, msg.sender, totalTrade.frozenBase);
-
-        pendingTrades[takerAddress][tranche][periodID].takerSell = _addSellTrade(
-            pendingTrades[takerAddress][tranche][periodID].takerSell,
-            totalTrade
-        );
+        if (totalTrade.frozenBase > 0) {
+            _tradeAvailable(tranche, takerAddress, totalTrade.frozenBase);
+            pendingTrades[takerAddress][tranche][periodID].takerSell = _addSellTrade(
+                pendingTrades[takerAddress][tranche][periodID].takerSell,
+                totalTrade
+            );
+            emit SellTrade(
+                takerAddress,
+                tranche,
+                totalTrade.frozenBase,
+                conversionID,
+                context.lastMatchedPDLevel,
+                context.lastMatchedOrderIndex,
+                context.lastMatchedAmount
+            );
+        }
     }
 
     /// @dev Settle both buy and sell trades of a specified epoch for takers
