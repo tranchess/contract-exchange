@@ -110,7 +110,29 @@ abstract contract Staking is ITrancheIndex {
     }
 
     function totalSupply(uint256 tranche) external view returns (uint256) {
-        return _totalSupplies[tranche];
+        uint256 totalSupplyP = _totalSupplies[TRANCHE_P];
+        uint256 totalSupplyA = _totalSupplies[TRANCHE_A];
+        uint256 totalSupplyB = _totalSupplies[TRANCHE_B];
+
+        uint256 version = _totalSupplyVersion;
+        uint256 conversionSize = fund.getConversionSize();
+        if (version < conversionSize) {
+            (totalSupplyP, totalSupplyA, totalSupplyB) = fund.batchConvert(
+                totalSupplyP,
+                totalSupplyA,
+                totalSupplyB,
+                version,
+                conversionSize
+            );
+        }
+
+        if (tranche == TRANCHE_P) {
+            return totalSupplyP;
+        } else if (tranche == TRANCHE_A) {
+            return totalSupplyA;
+        } else {
+            return totalSupplyB;
+        }
     }
 
     function availableBalanceOf(uint256 tranche, address account) external view returns (uint256) {
@@ -133,8 +155,8 @@ abstract contract Staking is ITrancheIndex {
                 amountP,
                 amountA,
                 amountB,
-                _balanceVersions[account],
-                fund.getConversionSize()
+                version,
+                conversionSize
             );
         }
 
@@ -167,8 +189,8 @@ abstract contract Staking is ITrancheIndex {
                 amountP,
                 amountA,
                 amountB,
-                _balanceVersions[account],
-                fund.getConversionSize()
+                version,
+                conversionSize
             );
         }
 
@@ -204,7 +226,7 @@ abstract contract Staking is ITrancheIndex {
     /// @param account Account to convert
     /// @param targetVersion Index beyond the last conversion in this transformation,
     ///                      or zero for the latest version
-    function refreshBalance(address account, uint256 targetVersion) public {
+    function refreshBalance(address account, uint256 targetVersion) external {
         uint256 conversionSize = fund.getConversionSize();
         if (targetVersion > 0) {
             require(targetVersion <= conversionSize, "Target version out of bound");
@@ -464,6 +486,7 @@ abstract contract Staking is ITrancheIndex {
             _totalSupplies[TRANCHE_P] = totalSupplyP;
             _totalSupplies[TRANCHE_A] = totalSupplyA;
             _totalSupplies[TRANCHE_B] = totalSupplyB;
+            _totalSupplyVersion = conversionSize;
         }
     }
 
@@ -551,6 +574,7 @@ abstract contract Staking is ITrancheIndex {
             if (locked[TRANCHE_B] != lockedB) {
                 locked[TRANCHE_B] = lockedB;
             }
+            _balanceVersions[account_] = targetVersion;
         }
     }
 }
