@@ -9,7 +9,7 @@ import "./interfaces/IVotingEscrow.sol";
 /// @notice Exchange role management
 /// @author Tranchess
 abstract contract ExchangeRoles {
-    event AppliedForMaker(address account, uint256 expiration);
+    event MakerApplied(address indexed account, uint256 expiration);
 
     /// @notice Voting Escrow.
     IVotingEscrow public immutable votingEscrow;
@@ -48,6 +48,6 @@ abstract contract ExchangeRoles {
         // token balance drop below the requirement.
         uint256 expiration = votingEscrow.getTimestampDropBelow(msg.sender, makerRequirement);
         makerExpiration[msg.sender] = expiration;
-        emit AppliedForMaker(msg.sender, expiration);
+        emit MakerApplied(msg.sender, expiration);
     }
 }

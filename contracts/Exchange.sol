@@ -42,8 +42,8 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
     /// @param clientOrderID Order ID specified by user
     /// @param orderIndex Index of the order in the order queue
     event BidOrderPlaced(
-        address maker,
-        uint256 tranche,
+        address indexed maker,
+        uint256 indexed tranche,
         uint256 pdLevel,
         uint256 quoteAmount,
         uint256 conversionID,
@@ -60,8 +60,8 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
     /// @param clientOrderID Order ID specified by user
     /// @param orderIndex Index of the order in the order queue
     event AskOrderPlaced(
-        address maker,
-        uint256 tranche,
+        address indexed maker,
+        uint256 indexed tranche,
         uint256 pdLevel,
         uint256 baseAmount,
         uint256 conversionID,
@@ -78,8 +78,8 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
     /// @param orderIndex Index of the order in the order queue
     /// @param fillable Unfilled amount when the order is canceled
     event BidOrderCanceled(
-        address maker,
-        uint256 tranche,
+        address indexed maker,
+        uint256 indexed tranche,
         uint256 pdLevel,
         uint256 quoteAmount,
         uint256 conversionID,
@@ -96,8 +96,8 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
     /// @param orderIndex Index of the order in the order queue
     /// @param fillable Unfilled amount when the order is canceled
     event AskOrderCanceled(
-        address maker,
-        uint256 tranche,
+        address indexed maker,
+        uint256 indexed tranche,
         uint256 pdLevel,
         uint256 baseAmount,
         uint256 conversionID,
@@ -114,8 +114,8 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
     /// @param lastMatchedOrderIndex Index of the last matched maker order in its order queue
     /// @param lastMatchedBaseAmount Matched base asset amount of the last matched maker order
     event BuyTrade(
-        address taker,
-        uint256 tranche,
+        address indexed taker,
+        uint256 indexed tranche,
         uint256 quoteAmount,
         uint256 conversionID,
         uint256 lastMatchedPDLevel,
@@ -132,8 +132,8 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
     /// @param lastMatchedOrderIndex Index of the last matched maker order in its order queue
     /// @param lastMatchedQuoteAmount Matched quote asset amount of the last matched maker order
     event SellTrade(
-        address taker,
-        uint256 tranche,
+        address indexed taker,
+        uint256 indexed tranche,
         uint256 baseAmount,
         uint256 conversionID,
         uint256 lastMatchedPDLevel,
@@ -141,8 +141,8 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         uint256 lastMatchedQuoteAmount
     );
 
-    event MakerSettled(address account, uint256 epoch);
-    event TakerSettled(address account, uint256 epoch);
+    event MakerSettled(address indexed account, uint256 epoch);
+    event TakerSettled(address indexed account, uint256 epoch);
 
     uint256 private constant EPOCH = 30 minutes; // An exchange epoch is 30 minutes long
 
