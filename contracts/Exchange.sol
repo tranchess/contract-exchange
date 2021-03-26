@@ -463,7 +463,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         uint256 maxPDLevel,
         uint256 quoteAmount
     ) external {
-        (uint256 estimatedNav, , ) = estimateNavs(block.timestamp - 2 * EPOCH);
+        (uint256 estimatedNav, , ) = estimateNavs(endOfEpoch(block.timestamp) - 2 * EPOCH);
         _buy(conversionID, msg.sender, TRANCHE_P, maxPDLevel, estimatedNav, quoteAmount);
     }
 
@@ -476,7 +476,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         uint256 maxPDLevel,
         uint256 quoteAmount
     ) external {
-        (, uint256 estimatedNav, ) = estimateNavs(block.timestamp - 2 * EPOCH);
+        (, uint256 estimatedNav, ) = estimateNavs(endOfEpoch(block.timestamp) - 2 * EPOCH);
         _buy(conversionID, msg.sender, TRANCHE_A, maxPDLevel, estimatedNav, quoteAmount);
     }
 
@@ -489,7 +489,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         uint256 maxPDLevel,
         uint256 quoteAmount
     ) external {
-        (, , uint256 estimatedNav) = estimateNavs(block.timestamp - 2 * EPOCH);
+        (, , uint256 estimatedNav) = estimateNavs(endOfEpoch(block.timestamp) - 2 * EPOCH);
         _buy(conversionID, msg.sender, TRANCHE_B, maxPDLevel, estimatedNav, quoteAmount);
     }
 
@@ -502,7 +502,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         uint256 minPDLevel,
         uint256 baseAmount
     ) external {
-        (uint256 estimatedNav, , ) = estimateNavs(block.timestamp - 2 * EPOCH);
+        (uint256 estimatedNav, , ) = estimateNavs(endOfEpoch(block.timestamp) - 2 * EPOCH);
         _sell(conversionID, msg.sender, TRANCHE_P, minPDLevel, estimatedNav, baseAmount);
     }
 
@@ -515,7 +515,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         uint256 minPDLevel,
         uint256 baseAmount
     ) external {
-        (, uint256 estimatedNav, ) = estimateNavs(block.timestamp - 2 * EPOCH);
+        (, uint256 estimatedNav, ) = estimateNavs(endOfEpoch(block.timestamp) - 2 * EPOCH);
         _sell(conversionID, msg.sender, TRANCHE_A, minPDLevel, estimatedNav, baseAmount);
     }
 
@@ -528,7 +528,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         uint256 minPDLevel,
         uint256 baseAmount
     ) external {
-        (, , uint256 estimatedNav) = estimateNavs(block.timestamp - 2 * EPOCH);
+        (, , uint256 estimatedNav) = estimateNavs(endOfEpoch(block.timestamp) - 2 * EPOCH);
         _sell(conversionID, msg.sender, TRANCHE_B, minPDLevel, estimatedNav, baseAmount);
     }
 
