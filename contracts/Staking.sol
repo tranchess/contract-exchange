@@ -473,7 +473,7 @@ abstract contract Staking is ITrancheIndex {
             if (weight > 0) {
                 integral = integral.add(
                     rate
-                        .mul(endTimestamp - timestamp_)
+                        .mul(endTimestamp.sub(timestamp_))
                         .multiplyDecimal(weeklyPercentage)
                         .divideDecimalRoundPrecise(weight)
                 );

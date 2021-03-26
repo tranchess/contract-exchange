@@ -510,7 +510,7 @@ describe("Staking", function () {
                 await fund.mock.getConversionTimestamp.withArgs(1).returns(checkpointTimestamp + 2);
                 await fund.mock.getConversionTimestamp.withArgs(2).returns(checkpointTimestamp + 3);
                 await advanceBlockAtTime(checkpointTimestamp + 100);
-                await expect(() => staking.refreshBalance(addr1, 1)).to.callMocks(
+                await expect(() => staking.refreshBalance(addr1, 1)).to.callMocksDebug(
                     {
                         func: fund.mock.convert.withArgs(TOTAL_P, TOTAL_A, TOTAL_B, 0),
                         rets: [10000, 1000, 100],
@@ -529,7 +529,7 @@ describe("Staking", function () {
                     }
                 );
                 expect(await staking.balanceVersion(addr1)).to.equal(1);
-                await expect(() => staking.refreshBalance(addr1, 3)).to.callMocks(
+                await expect(() => staking.refreshBalance(addr1, 3)).to.callMocksDebug(
                     {
                         func: fund.mock.convert.withArgs(123, 456, 789, 1),
                         rets: [1230, 4560, 7890],
