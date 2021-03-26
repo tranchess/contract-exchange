@@ -39,6 +39,9 @@ abstract contract Staking is ITrancheIndex {
     /// @notice The CHESS token contract.
     IChess public immutable chess;
 
+    uint256 public _rate;
+    uint256 public _futureEpoch;
+
     /// @notice The controller contract.
     IChessController public immutable chessController;
 
@@ -91,6 +94,8 @@ abstract contract Staking is ITrancheIndex {
         chess = IChess(chess_);
         chessController = IChessController(chessController_);
         quoteAssetAddress = quoteAssetAddress_;
+
+        (_futureEpoch, _rate) = IChess(chess_).futureDayTimeWrite();
     }
 
     /// @notice Return weight of given balance with respect to rewards.
@@ -420,50 +425,79 @@ abstract contract Staking is ITrancheIndex {
         if (timestamp >= block.timestamp) {
             return;
         }
-        uint256 rate =
-            chess.rate().multiplyDecimal(
-                chessController.getFundRelativeWeight(address(this), block.timestamp)
-            );
+
+        uint256 integral = _invTotalWeightIntegral;
+
+        uint256 endWeek = fund.endOfWeek(timestamp);
+        uint256 weeklyPercentage =
+            chessController.getFundRelativeWeight(address(this), endWeek - 1 weeks);
+
+        uint256 version = _totalSupplyVersion;
+        uint256 conversionTimestamp = fund.getConversionTimestamp(version);
+        uint256 futureEpoch = _futureEpoch;
+        uint256 rate = _rate;
 
         uint256 totalSupplyP = _totalSupplies[TRANCHE_P];
         uint256 totalSupplyA = _totalSupplies[TRANCHE_A];
         uint256 totalSupplyB = _totalSupplies[TRANCHE_B];
-        uint256 oldVersion = _totalSupplyVersion;
-        uint256 integral = _invTotalWeightIntegral;
-        for (uint256 i = oldVersion; i < conversionSize; i++) {
-            uint256 weight = rewardWeight(totalSupplyP, totalSupplyA, totalSupplyB);
-            uint256 conversionTimestamp = fund.getConversionTimestamp(i);
+        uint256 weight = rewardWeight(totalSupplyP, totalSupplyA, totalSupplyB);
+
+        uint256 timestamp_ = _checkpointTimestamp; // avoid stack too deep
+
+        for (uint256 i = 0; i < 500 && timestamp_ < block.timestamp; i++) {
+            uint256 endTimestamp =
+                futureEpoch.min(conversionTimestamp).min(endWeek).min(block.timestamp);
+
             if (weight > 0) {
                 integral = integral.add(
-                    rate.mul(conversionTimestamp - timestamp).divideDecimalRoundPrecise(weight)
+                    rate
+                        .mul(endTimestamp - timestamp_)
+                        .multiplyDecimal(weeklyPercentage)
+                        .divideDecimalRoundPrecise(weight)
                 );
             }
-            _historyIntegrals.push(integral);
 
-            integral = 0;
-            timestamp = conversionTimestamp;
-            (totalSupplyP, totalSupplyA, totalSupplyB) = fund.convert(
-                totalSupplyP,
-                totalSupplyA,
-                totalSupplyB,
-                i
-            );
-        }
+            if (endTimestamp == conversionTimestamp && version < conversionSize) {
+                _historyIntegrals.push(integral);
 
-        uint256 weight = rewardWeight(totalSupplyP, totalSupplyA, totalSupplyB);
-        if (weight > 0) {
-            // We are making a checkpoint of now, which is almost always the case
-            integral = integral.add(
-                rate.mul(block.timestamp - timestamp).divideDecimalRoundPrecise(weight)
-            );
+                integral = 0;
+                (totalSupplyP, totalSupplyA, totalSupplyB) = fund.convert(
+                    totalSupplyP,
+                    totalSupplyA,
+                    totalSupplyB,
+                    version
+                );
+
+                version++;
+                weight = rewardWeight(totalSupplyP, totalSupplyA, totalSupplyB);
+                conversionTimestamp = fund.getConversionTimestamp(version);
+            }
+
+            if (endTimestamp == futureEpoch) {
+                (futureEpoch, rate) = chess.futureDayTimeWrite();
+            }
+
+            if (endTimestamp == endWeek) {
+                weeklyPercentage = chessController.getFundRelativeWeight(address(this), endWeek);
+                endWeek += 1 weeks;
+            }
+
+            timestamp_ = endTimestamp;
         }
 
         _checkpointTimestamp = block.timestamp;
         _invTotalWeightIntegral = integral;
-        if (oldVersion < conversionSize) {
+
+        if (_futureEpoch != futureEpoch) {
+            _futureEpoch = futureEpoch;
+            _rate = rate;
+        }
+
+        if (_totalSupplyVersion != version) {
             _totalSupplies[TRANCHE_P] = totalSupplyP;
             _totalSupplies[TRANCHE_A] = totalSupplyA;
             _totalSupplies[TRANCHE_B] = totalSupplyB;
+            _totalSupplyVersion = version;
         }
     }
 

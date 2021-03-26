@@ -6,6 +6,7 @@ const { loadFixture } = waffle;
 const { parseEther } = ethers.utils;
 import { deployMockForName } from "./mock";
 
+const WEEK = 7 * 86400;
 const TRANCHE_P = 0;
 const TRANCHE_A = 1;
 const TRANCHE_B = 2;
@@ -88,6 +89,10 @@ describe("Staking", function () {
     async function deployFixture(_wallets: Wallet[], provider: MockProvider): Promise<FixtureData> {
         const [user1, user2, owner] = provider.getWallets();
 
+        const startEpoch = (await ethers.provider.getBlock("latest")).timestamp;
+        advanceBlockAtTime(Math.floor(startEpoch / WEEK) * WEEK + WEEK);
+        const endWeek = Math.floor(startEpoch / WEEK) * WEEK + WEEK * 2;
+
         const fund = await deployMockForName(owner, "IFund");
         const shareP = await deployMockForName(owner, "IERC20");
         const shareA = await deployMockForName(owner, "IERC20");
@@ -96,9 +101,12 @@ describe("Staking", function () {
         await fund.mock.tokenA.returns(shareA.address);
         await fund.mock.tokenB.returns(shareB.address);
         await fund.mock.getConversionSize.returns(0);
+        await fund.mock.endOfWeek.returns(endWeek);
+        await fund.mock.getConversionTimestamp.returns(endWeek);
 
         const MockChess = await ethers.getContractFactory("MockChess");
         const chess = await MockChess.connect(owner).deploy("CHESS", "CHESS", 18);
+        await chess.set(endWeek + WEEK * 100, parseEther("1"));
 
         const chessController = await deployMockForName(owner, "IChessController");
         await chessController.mock.getFundRelativeWeight.returns(parseEther("1"));
@@ -460,7 +468,7 @@ describe("Staking", function () {
             // this checkpoint. So no one has rewards till now.
             await staking.claimRewards(addr1);
             checkpointTimestamp = (await ethers.provider.getBlock("latest")).timestamp;
-            await chess.setRate(parseEther("1"));
+            //await chess.set(checkpointTimestamp, parseEther("1"));
             rate1 = parseEther("1").mul(USER1_WEIGHT).div(TOTAL_WEIGHT);
             rate2 = parseEther("1").mul(USER2_WEIGHT).div(TOTAL_WEIGHT);
         });
