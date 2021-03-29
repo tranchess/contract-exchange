@@ -859,7 +859,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
                 if (order.fillable == 0) {
                     _removeOrder(orderQueue, index);
                 }
-                context.lastMatchedPDLevel = i;
+                context.lastMatchedPDLevel = i - 1;
                 context.lastMatchedOrderIndex = index;
                 context.lastMatchedAmount = currentTrade.reservedQuote;
                 index = order.next;
