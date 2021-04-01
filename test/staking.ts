@@ -63,6 +63,7 @@ describe("Staking", function () {
     interface FixtureData {
         readonly wallets: FixtureWalletMap;
         readonly checkpointTimestamp: number;
+        readonly nextEpoch: number;
         readonly fund: MockContract;
         readonly shareP: MockContract;
         readonly shareA: MockContract;
@@ -77,6 +78,7 @@ describe("Staking", function () {
     let fixtureData: FixtureData;
 
     let checkpointTimestamp: number;
+    let nextEpoch: number;
     let user1: Wallet;
     let user2: Wallet;
     let owner: Wallet;
@@ -97,6 +99,7 @@ describe("Staking", function () {
         const startEpoch = (await ethers.provider.getBlock("latest")).timestamp;
         advanceBlockAtTime(Math.floor(startEpoch / WEEK) * WEEK + WEEK);
         const endWeek = Math.floor(startEpoch / WEEK) * WEEK + WEEK * 2;
+        const nextEpoch = endWeek + WEEK * 10;
 
         const fund = await deployMockForName(owner, "IFund");
         const shareP = await deployMockForName(owner, "IERC20");
@@ -106,12 +109,11 @@ describe("Staking", function () {
         await fund.mock.tokenA.returns(shareA.address);
         await fund.mock.tokenB.returns(shareB.address);
         await fund.mock.getConversionSize.returns(0);
-        await fund.mock.endOfWeek.returns(endWeek);
         await fund.mock.getConversionTimestamp.returns(endWeek);
 
         const MockChess = await ethers.getContractFactory("MockChess");
         const chess = await MockChess.connect(owner).deploy("CHESS", "CHESS", 18);
-        await chess.set(endWeek + WEEK * 100, parseEther("1"));
+        await chess.set(nextEpoch, parseEther("0"));
 
         const chessController = await deployMockForName(owner, "IChessController");
         await chessController.mock.getFundRelativeWeight.returns(parseEther("1"));
@@ -145,6 +147,7 @@ describe("Staking", function () {
         return {
             wallets: { user1, user2, owner },
             checkpointTimestamp,
+            nextEpoch,
             fund,
             shareP,
             shareA,
@@ -163,6 +166,7 @@ describe("Staking", function () {
     beforeEach(async function () {
         fixtureData = await loadFixture(currentFixture);
         checkpointTimestamp = fixtureData.checkpointTimestamp;
+        nextEpoch = fixtureData.nextEpoch;
         user1 = fixtureData.wallets.user1;
         user2 = fixtureData.wallets.user2;
         owner = fixtureData.wallets.owner;
@@ -510,7 +514,7 @@ describe("Staking", function () {
                 await fund.mock.getConversionTimestamp.withArgs(1).returns(checkpointTimestamp + 2);
                 await fund.mock.getConversionTimestamp.withArgs(2).returns(checkpointTimestamp + 3);
                 await advanceBlockAtTime(checkpointTimestamp + 100);
-                await expect(() => staking.refreshBalance(addr1, 1)).to.callMocksDebug(
+                await expect(() => staking.refreshBalance(addr1, 1)).to.callMocks(
                     {
                         func: fund.mock.convert.withArgs(TOTAL_P, TOTAL_A, TOTAL_B, 0),
                         rets: [10000, 1000, 100],
@@ -529,7 +533,7 @@ describe("Staking", function () {
                     }
                 );
                 expect(await staking.balanceVersion(addr1)).to.equal(1);
-                await expect(() => staking.refreshBalance(addr1, 3)).to.callMocksDebug(
+                await expect(() => staking.refreshBalance(addr1, 3)).to.callMocks(
                     {
                         func: fund.mock.convert.withArgs(123, 456, 789, 1),
                         rets: [1230, 4560, 7890],
@@ -609,7 +613,10 @@ describe("Staking", function () {
                 await staking.lock(TRANCHE_A, addr1, 100);
                 await staking.lock(TRANCHE_B, addr1, 10);
                 await fund.mock.getConversionSize.returns(1);
-                await fund.mock.getConversionTimestamp.withArgs(0).returns(checkpointTimestamp + 1);
+
+                await fund.mock.getConversionTimestamp
+                    .withArgs(0)
+                    .returns((await ethers.provider.getBlock("latest")).timestamp - 1);
                 await advanceBlockAtTime(checkpointTimestamp + 100);
                 await expect(() => staking.refreshBalance(addr1, 1)).to.callMocks(
                     {
@@ -684,7 +691,9 @@ describe("Staking", function () {
             it("Should convert order amounts before unlock", async function () {
                 await staking.lock(TRANCHE_A, addr1, 3000);
                 await fund.mock.getConversionSize.returns(1);
-                await fund.mock.getConversionTimestamp.withArgs(0).returns(checkpointTimestamp + 1);
+                await fund.mock.getConversionTimestamp
+                    .withArgs(0)
+                    .returns((await ethers.provider.getBlock("latest")).timestamp - 1);
                 await fund.mock.convert
                     .withArgs(TOTAL_P, TOTAL_A, TOTAL_B, 0)
                     .returns(10000, 1000, 100);
@@ -753,9 +762,11 @@ describe("Staking", function () {
         beforeEach(async function () {
             // Trigger a checkpoint and record its block timestamp. Reward rate is zero before
             // this checkpoint. So no one has rewards till now.
-            await staking.claimRewards(addr1);
+            await fund.mock.getConversionTimestamp.withArgs(0).returns(nextEpoch + 100 * WEEK);
+            await chess.set(nextEpoch + 100 * WEEK, parseEther("1"));
+            advanceBlockAtTime(nextEpoch);
+
             checkpointTimestamp = (await ethers.provider.getBlock("latest")).timestamp;
-            //await chess.set(checkpointTimestamp, parseEther("1"));
             rate1 = parseEther("1").mul(USER1_WEIGHT).div(TOTAL_WEIGHT);
             rate2 = parseEther("1").mul(USER2_WEIGHT).div(TOTAL_WEIGHT);
         });

@@ -27,6 +27,9 @@ abstract contract Staking is ITrancheIndex {
     event Deposited(uint256 tranche, address account, uint256 amount);
     event Withdrawn(uint256 tranche, address account, uint256 amount);
 
+    /// @notice UTC time of a day when the fund settles.
+    uint256 public constant SETTLEMENT_TIME = 14 hours;
+
     uint256 private constant REWARD_WEIGHT_A = 1;
     uint256 private constant REWARD_WEIGHT_B = 3;
     uint256 private constant REWARD_WEIGHT_P = 2;
@@ -94,8 +97,16 @@ abstract contract Staking is ITrancheIndex {
         chess = IChess(chess_);
         chessController = IChessController(chessController_);
         quoteAssetAddress = quoteAssetAddress_;
+        _checkpointTimestamp = block.timestamp;
 
         (_futureEpoch, _rate) = IChess(chess_).futureDayTimeWrite();
+    }
+
+    /// @notice Return end timestamp of the trading week containing a given timestamp.
+    /// @param timestamp The given timestamp
+    /// @return End timestamp of the trading week.
+    function endOfWeek(uint256 timestamp) public pure returns (uint256) {
+        return ((timestamp.add(1 weeks) - SETTLEMENT_TIME) / 1 weeks) * 1 weeks + SETTLEMENT_TIME;
     }
 
     /// @notice Return weight of given balance with respect to rewards.
@@ -439,6 +450,22 @@ abstract contract Staking is ITrancheIndex {
         _claimableRewards[account] = 0;
     }
 
+    function test()
+        public
+        view
+        returns (
+            uint256,
+            uint256,
+            uint256
+        )
+    {
+        return (
+            block.timestamp,
+            _checkpointTimestamp,
+            fund.getConversionTimestamp(_totalSupplyVersion)
+        );
+    }
+
     /// @dev Convert total supplies to the latest version and make a global reward checkpoint.
     /// @param conversionSize The number of existing conversions. It must be the same as
     ///                       `fund.getConversionSize()`.
@@ -450,12 +477,12 @@ abstract contract Staking is ITrancheIndex {
 
         uint256 integral = _invTotalWeightIntegral;
 
-        uint256 endWeek = fund.endOfWeek(timestamp);
+        uint256 endWeek = endOfWeek(timestamp);
         uint256 weeklyPercentage =
             chessController.getFundRelativeWeight(address(this), endWeek - 1 weeks);
 
         uint256 version = _totalSupplyVersion;
-        uint256 conversionTimestamp = fund.getConversionTimestamp(version);
+        uint256 conversionTimestamp = 2**256 - 1;
         uint256 futureEpoch = _futureEpoch;
         uint256 rate = _rate;
 
@@ -467,6 +494,12 @@ abstract contract Staking is ITrancheIndex {
         uint256 timestamp_ = _checkpointTimestamp; // avoid stack too deep
 
         for (uint256 i = 0; i < 500 && timestamp_ < block.timestamp; i++) {
+            if (version < conversionSize) {
+                conversionTimestamp = fund.getConversionTimestamp(version);
+            } else {
+                conversionTimestamp = 2**256 - 1;
+            }
+
             uint256 endTimestamp =
                 futureEpoch.min(conversionTimestamp).min(endWeek).min(block.timestamp);
 
@@ -479,7 +512,7 @@ abstract contract Staking is ITrancheIndex {
                 );
             }
 
-            if (endTimestamp == conversionTimestamp && version < conversionSize) {
+            if (endTimestamp == conversionTimestamp) {
                 _historyIntegrals.push(integral);
 
                 integral = 0;
@@ -492,7 +525,6 @@ abstract contract Staking is ITrancheIndex {
 
                 version++;
                 weight = rewardWeight(totalSupplyP, totalSupplyA, totalSupplyB);
-                conversionTimestamp = fund.getConversionTimestamp(version);
             }
 
             if (endTimestamp == futureEpoch) {
