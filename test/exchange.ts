@@ -6,7 +6,6 @@ const { loadFixture } = waffle;
 const { parseEther, parseUnits } = ethers.utils;
 const parseUsdc = (value: string) => parseUnits(value, 6);
 import { deployMockForName } from "./mock";
-import { start } from "node:repl";
 
 const EPOCH = 1800; // 30 min
 const WEEK = 7 * 86400;
