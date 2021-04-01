@@ -450,22 +450,6 @@ abstract contract Staking is ITrancheIndex {
         _claimableRewards[account] = 0;
     }
 
-    function test()
-        public
-        view
-        returns (
-            uint256,
-            uint256,
-            uint256
-        )
-    {
-        return (
-            block.timestamp,
-            _checkpointTimestamp,
-            fund.getConversionTimestamp(_totalSupplyVersion)
-        );
-    }
-
     /// @dev Convert total supplies to the latest version and make a global reward checkpoint.
     /// @param conversionSize The number of existing conversions. It must be the same as
     ///                       `fund.getConversionSize()`.
