@@ -760,7 +760,9 @@ describe("Staking", function () {
         beforeEach(async function () {
             // Trigger a checkpoint and record its block timestamp. Reward rate is zero before
             // this checkpoint. So no one has rewards till now.
-            await fund.mock.getConversionTimestamp.withArgs(0).returns(nextRateUpdateTime + 100 * WEEK);
+            await fund.mock.getConversionTimestamp
+                .withArgs(0)
+                .returns(nextRateUpdateTime + 100 * WEEK);
             await chess.set(nextRateUpdateTime + 100 * WEEK, parseEther("1"));
             advanceBlockAtTime(nextRateUpdateTime);
 

@@ -29,6 +29,7 @@ abstract contract Staking is ITrancheIndex {
 
     /// @notice UTC time of a day when the fund settles.
     uint256 private constant SETTLEMENT_TIME = 14 hours;
+    uint256 private constant MAX_ITERATIONS = 500;
 
     uint256 private constant REWARD_WEIGHT_A = 1;
     uint256 private constant REWARD_WEIGHT_B = 3;
@@ -478,7 +479,7 @@ abstract contract Staking is ITrancheIndex {
         uint256 weight = rewardWeight(totalSupplyP, totalSupplyA, totalSupplyB);
         uint256 timestamp_ = timestamp; // avoid stack too deep
 
-        for (uint256 i = 0; i < 500 && timestamp_ < block.timestamp; i++) {
+        for (uint256 i = 0; i < MAX_ITERATIONS && timestamp_ < block.timestamp; i++) {
             uint256 endTimestamp =
                 futureEpoch.min(conversionTimestamp).min(endWeek).min(block.timestamp);
 
