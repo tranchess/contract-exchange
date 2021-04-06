@@ -529,7 +529,7 @@ abstract contract Staking is ITrancheIndex {
             _futureEpoch = futureEpoch;
             _rate = rate;
         }
-        if (_totalSupplyVersion != version) {
+        if (_totalSupplyVersion != conversionSize) {
             _totalSupplies[TRANCHE_P] = totalSupplyP;
             _totalSupplies[TRANCHE_A] = totalSupplyA;
             _totalSupplies[TRANCHE_B] = totalSupplyB;
