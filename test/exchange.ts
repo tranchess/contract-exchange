@@ -86,6 +86,7 @@ describe("Exchange", function () {
         await fund.mock.tokenB.returns(shareB.address);
         await fund.mock.getConversionSize.returns(0);
         await fund.mock.twapOracle.returns(twapOracle.address);
+        await fund.mock.isExchangeActive.returns(true);
         await twapOracle.mock.getTwap.returns(parseEther("1000"));
 
         const chess = await deployMockForName(owner, "IChess");
@@ -358,6 +359,11 @@ describe("Exchange", function () {
     });
 
     describe("buyP", function () {
+        it("Should revert if exchange is inactive", async function () {
+            await fund.mock.isExchangeActive.returns(false);
+            await expect(exchange.buyP(0, 40, 1)).to.be.revertedWith("Exchange is inactive");
+        });
+
         it("Should revert if price is not available", async function () {
             await twapOracle.mock.getTwap.returns(parseEther("0"));
             await expect(exchange.buyP(0, 40, 1)).to.be.revertedWith("Price is not available");

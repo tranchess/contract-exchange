@@ -462,7 +462,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         uint256 conversionID,
         uint256 maxPDLevel,
         uint256 quoteAmount
-    ) external {
+    ) external onlyActive {
         (uint256 estimatedNav, , ) = estimateNavs(endOfEpoch(block.timestamp) - 2 * EPOCH);
         _buy(conversionID, msg.sender, TRANCHE_P, maxPDLevel, estimatedNav, quoteAmount);
     }
@@ -475,7 +475,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         uint256 conversionID,
         uint256 maxPDLevel,
         uint256 quoteAmount
-    ) external {
+    ) external onlyActive {
         (, uint256 estimatedNav, ) = estimateNavs(endOfEpoch(block.timestamp) - 2 * EPOCH);
         _buy(conversionID, msg.sender, TRANCHE_A, maxPDLevel, estimatedNav, quoteAmount);
     }
@@ -488,7 +488,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         uint256 conversionID,
         uint256 maxPDLevel,
         uint256 quoteAmount
-    ) external {
+    ) external onlyActive {
         (, , uint256 estimatedNav) = estimateNavs(endOfEpoch(block.timestamp) - 2 * EPOCH);
         _buy(conversionID, msg.sender, TRANCHE_B, maxPDLevel, estimatedNav, quoteAmount);
     }
@@ -501,7 +501,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         uint256 conversionID,
         uint256 minPDLevel,
         uint256 baseAmount
-    ) external {
+    ) external onlyActive {
         (uint256 estimatedNav, , ) = estimateNavs(endOfEpoch(block.timestamp) - 2 * EPOCH);
         _sell(conversionID, msg.sender, TRANCHE_P, minPDLevel, estimatedNav, baseAmount);
     }
@@ -514,7 +514,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         uint256 conversionID,
         uint256 minPDLevel,
         uint256 baseAmount
-    ) external {
+    ) external onlyActive {
         (, uint256 estimatedNav, ) = estimateNavs(endOfEpoch(block.timestamp) - 2 * EPOCH);
         _sell(conversionID, msg.sender, TRANCHE_A, minPDLevel, estimatedNav, baseAmount);
     }
@@ -527,7 +527,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         uint256 conversionID,
         uint256 minPDLevel,
         uint256 baseAmount
-    ) external {
+    ) external onlyActive {
         (, , uint256 estimatedNav) = estimateNavs(endOfEpoch(block.timestamp) - 2 * EPOCH);
         _sell(conversionID, msg.sender, TRANCHE_B, minPDLevel, estimatedNav, baseAmount);
     }
@@ -1092,5 +1092,10 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         // Reserved quote is not enough. The trade is partially executed
         // and a fraction of frozenBase is returned to the taker.
         return (reservedQuote, (sellTrade.frozenBase * reservedQuote) / nav / effectiveBase);
+    }
+
+    modifier onlyActive() {
+        require(fund.isExchangeActive(block.timestamp), "Exchange is inactive");
+        _;
     }
 }
