@@ -44,6 +44,8 @@ interface IFund {
 
     function endOfDay(uint256 timestamp) external pure returns (uint256);
 
+    function endOfWeek(uint256 timestamp) external pure returns (uint256);
+
     function shareTotalSupply(uint256 tranche) external view returns (uint256);
 
     function shareBalanceOf(uint256 tranche, address account) external view returns (uint256);
@@ -66,13 +68,18 @@ interface IFund {
 
     function currentDay() external view returns (uint256);
 
-    function activityStartTime() external view returns (uint256);
+    function primaryMarketActivityStartTime() external view returns (uint256);
 
-    function isActive(uint256 timestamp) external view returns (bool);
+    function exchangeActivityStartTime() external view returns (uint256);
+
+    function isPrimaryMarketActive(address primaryMarket, uint256 timestamp)
+        external
+        view
+        returns (bool);
+
+    function isExchangeActive(uint256 timestamp) external view returns (bool);
 
     function getTotalShares() external view returns (uint256);
-
-    function currentInterestRate() external view returns (uint256);
 
     function extrapolateNav(uint256 timestamp, uint256 price)
         external
