@@ -352,7 +352,14 @@ abstract contract Staking is ITrancheIndex {
         uint256 amountA,
         uint256 amountB,
         uint256 amountVersion
-    ) internal {
+    )
+        internal
+        returns (
+            uint256,
+            uint256,
+            uint256
+        )
+    {
         uint256 conversionSize = fund.getConversionSize();
         _checkpoint(conversionSize);
         _userCheckpoint(account, conversionSize);
@@ -378,6 +385,7 @@ abstract contract Staking is ITrancheIndex {
             available[TRANCHE_B] = available[TRANCHE_B].add(amountB);
             _totalSupplies[TRANCHE_B] = _totalSupplies[TRANCHE_B].add(amountB);
         }
+        return (amountP, amountA, amountB);
     }
 
     function _lock(
