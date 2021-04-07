@@ -513,6 +513,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
             for (uint256 i = pdLevel + 1; i > 0; i--) {
                 if (bids[conversionID][tranche][i - 1].totalAmount != 0) {
                     bestBid = i - 1;
+                    break;
                 }
             }
             bestBids[conversionID][tranche] = bestBid;
@@ -550,6 +551,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
             for (uint256 i = pdLevel; i < PD_LEVEL_COUNT; i++) {
                 if (asks[conversionID][tranche][i].totalAmount != 0) {
                     bestAsk = i;
+                    break;
                 }
             }
             bestAsks[conversionID][tranche] = bestAsk;
