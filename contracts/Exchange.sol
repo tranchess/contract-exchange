@@ -534,36 +534,82 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
 
     /// @notice Settle trades of a specified epoch for makers
     /// @param periodID A specified epoch's end timestamp
-    function settleMaker(uint256 periodID) external {
+    /// @return sharesP Share P amount added to msg.sender's available balance
+    /// @return sharesA Share A amount added to msg.sender's available balance
+    /// @return sharesB Share B amount added to msg.sender's available balance
+    /// @return quoteAmount Quote asset amount transfered to msg.sender
+    function settleMaker(uint256 periodID)
+        external
+        returns (
+            uint256 sharesP,
+            uint256 sharesA,
+            uint256 sharesB,
+            uint256 quoteAmount
+        )
+    {
         (uint256 estimatedNavP, uint256 estimatedNavA, uint256 estimatedNavB) =
             estimateNavs(periodID + EPOCH);
 
-        (uint256 sharesP, uint256 quoteAmountP) =
-            _settleMaker(msg.sender, TRANCHE_P, estimatedNavP, periodID);
-        (uint256 sharesA, uint256 quoteAmountA) =
-            _settleMaker(msg.sender, TRANCHE_A, estimatedNavA, periodID);
-        (uint256 sharesB, uint256 quoteAmountB) =
-            _settleMaker(msg.sender, TRANCHE_B, estimatedNavB, periodID);
+        uint256 quoteAmountP;
+        uint256 quoteAmountA;
+        uint256 quoteAmountB;
+        (sharesP, quoteAmountP) = _settleMaker(msg.sender, TRANCHE_P, estimatedNavP, periodID);
+        (sharesA, quoteAmountA) = _settleMaker(msg.sender, TRANCHE_A, estimatedNavA, periodID);
+        (sharesB, quoteAmountB) = _settleMaker(msg.sender, TRANCHE_B, estimatedNavB, periodID);
 
-        _clear(periodID, sharesP, sharesA, sharesB, quoteAmountP + quoteAmountA + quoteAmountB);
+        uint256 conversionID = mostRecentConversionPendingTrades[periodID];
+        (sharesP, sharesA, sharesB) = _convertAndClearTrade(
+            msg.sender,
+            sharesP,
+            sharesA,
+            sharesB,
+            conversionID
+        );
+        quoteAmount = quoteAmountP + quoteAmountA + quoteAmountB;
+        if (quoteAmount > 0) {
+            IERC20(quoteAssetAddress).transfer(msg.sender, quoteAmount);
+        }
 
         emit MakerSettled(msg.sender, periodID);
     }
 
     /// @notice Settle trades of a specified epoch for takers
     /// @param periodID A specified epoch's end timestamp
-    function settleTaker(uint256 periodID) external {
+    /// @return sharesP Share P amount added to msg.sender's available balance
+    /// @return sharesA Share A amount added to msg.sender's available balance
+    /// @return sharesB Share B amount added to msg.sender's available balance
+    /// @return quoteAmount Quote asset amount transfered to msg.sender
+    function settleTaker(uint256 periodID)
+        external
+        returns (
+            uint256 sharesP,
+            uint256 sharesA,
+            uint256 sharesB,
+            uint256 quoteAmount
+        )
+    {
         (uint256 estimatedNavP, uint256 estimatedNavA, uint256 estimatedNavB) =
             estimateNavs(periodID + EPOCH);
 
-        (uint256 sharesP, uint256 quoteAmountP) =
-            _settleTaker(msg.sender, TRANCHE_P, estimatedNavP, periodID);
-        (uint256 sharesA, uint256 quoteAmountA) =
-            _settleTaker(msg.sender, TRANCHE_A, estimatedNavA, periodID);
-        (uint256 sharesB, uint256 quoteAmountB) =
-            _settleTaker(msg.sender, TRANCHE_B, estimatedNavB, periodID);
+        uint256 quoteAmountP;
+        uint256 quoteAmountA;
+        uint256 quoteAmountB;
+        (sharesP, quoteAmountP) = _settleTaker(msg.sender, TRANCHE_P, estimatedNavP, periodID);
+        (sharesA, quoteAmountA) = _settleTaker(msg.sender, TRANCHE_A, estimatedNavA, periodID);
+        (sharesB, quoteAmountB) = _settleTaker(msg.sender, TRANCHE_B, estimatedNavB, periodID);
 
-        _clear(periodID, sharesP, sharesA, sharesB, quoteAmountP + quoteAmountA + quoteAmountB);
+        uint256 conversionID = mostRecentConversionPendingTrades[periodID];
+        (sharesP, sharesA, sharesB) = _convertAndClearTrade(
+            msg.sender,
+            sharesP,
+            sharesA,
+            sharesB,
+            conversionID
+        );
+        quoteAmount = quoteAmountP + quoteAmountA + quoteAmountB;
+        if (quoteAmount > 0) {
+            IERC20(quoteAssetAddress).transfer(msg.sender, quoteAmount);
+        }
 
         emit TakerSettled(msg.sender, periodID);
     }
@@ -972,33 +1018,6 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
 
             // Delete by zeroing it out
             delete pendingTrade.makerBuy;
-        }
-    }
-
-    /// @dev Clear trades
-    /// @param periodID The epoch's end timestamp
-    /// @param sharesPAmount Share P amount before conversion
-    /// @param sharesPAmount Share A amount before conversion
-    /// @param sharesPAmount Share B amount before conversion
-    /// @param quoteAmount Quote asset amount
-    function _clear(
-        uint256 periodID,
-        uint256 sharesPAmount,
-        uint256 sharesAAmount,
-        uint256 sharesBAmount,
-        uint256 quoteAmount
-    ) internal {
-        // Convert the shares to latest
-        uint256 conversionID = mostRecentConversionPendingTrades[periodID];
-        _convertAndClearTrade(
-            msg.sender,
-            sharesPAmount,
-            sharesAAmount,
-            sharesBAmount,
-            conversionID
-        );
-        if (quoteAmount > 0) {
-            IERC20(quoteAssetAddress).transfer(msg.sender, quoteAmount);
         }
     }
 
