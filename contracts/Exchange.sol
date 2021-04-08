@@ -582,6 +582,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         uint256 quoteAmount
     ) internal {
         require(maxPDLevel < PD_LEVEL_COUNT, "Invalid premium-discount level");
+        require(conversionID == fund.getConversionSize(), "Invalid conversion ID");
 
         PendingBuyTrade memory totalTrade;
         uint256 periodID = endOfEpoch(block.timestamp);
@@ -681,6 +682,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         uint256 baseAmount
     ) internal {
         require(minPDLevel < PD_LEVEL_COUNT, "Invalid premium-discount level");
+        require(conversionID == fund.getConversionSize(), "Invalid conversion ID");
 
         PendingSellTrade memory totalTrade;
         uint256 periodID = endOfEpoch(block.timestamp);
