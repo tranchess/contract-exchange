@@ -808,26 +808,24 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
             }
         }
 
-        if (totalTrade.frozenQuote > 0) {
-            IERC20(quoteAssetAddress).transferFrom(
-                takerAddress,
-                address(this),
-                totalTrade.frozenQuote
-            );
-            pendingTrades[takerAddress][tranche][periodID].takerBuy = _addBuyTrade(
-                pendingTrades[takerAddress][tranche][periodID].takerBuy,
-                totalTrade
-            );
-            emit BuyTrade(
-                takerAddress,
-                tranche,
-                totalTrade.frozenQuote,
-                conversionID,
-                context.lastMatchedPDLevel,
-                context.lastMatchedOrderIndex,
-                context.lastMatchedAmount
-            );
-        }
+        require(
+            totalTrade.frozenQuote > 0,
+            "Nothing can be bought at the given premium-discount level"
+        );
+        IERC20(quoteAssetAddress).transferFrom(takerAddress, address(this), totalTrade.frozenQuote);
+        pendingTrades[takerAddress][tranche][periodID].takerBuy = _addBuyTrade(
+            pendingTrades[takerAddress][tranche][periodID].takerBuy,
+            totalTrade
+        );
+        emit BuyTrade(
+            takerAddress,
+            tranche,
+            totalTrade.frozenQuote,
+            conversionID,
+            context.lastMatchedPDLevel,
+            context.lastMatchedOrderIndex,
+            context.lastMatchedAmount
+        );
     }
 
     /// @dev Sell share
@@ -926,22 +924,24 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
             }
         }
 
-        if (totalTrade.frozenBase > 0) {
-            _tradeAvailable(tranche, takerAddress, totalTrade.frozenBase);
-            pendingTrades[takerAddress][tranche][periodID].takerSell = _addSellTrade(
-                pendingTrades[takerAddress][tranche][periodID].takerSell,
-                totalTrade
-            );
-            emit SellTrade(
-                takerAddress,
-                tranche,
-                totalTrade.frozenBase,
-                conversionID,
-                context.lastMatchedPDLevel,
-                context.lastMatchedOrderIndex,
-                context.lastMatchedAmount
-            );
-        }
+        require(
+            totalTrade.frozenBase > 0,
+            "Nothing can be sold at the given premium-discount level"
+        );
+        _tradeAvailable(tranche, takerAddress, totalTrade.frozenBase);
+        pendingTrades[takerAddress][tranche][periodID].takerSell = _addSellTrade(
+            pendingTrades[takerAddress][tranche][periodID].takerSell,
+            totalTrade
+        );
+        emit SellTrade(
+            takerAddress,
+            tranche,
+            totalTrade.frozenBase,
+            conversionID,
+            context.lastMatchedPDLevel,
+            context.lastMatchedOrderIndex,
+            context.lastMatchedAmount
+        );
     }
 
     /// @dev Settle both buy and sell trades of a specified epoch for takers
