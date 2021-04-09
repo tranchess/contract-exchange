@@ -60,25 +60,29 @@ contract ExchangeOrderBook {
         queue.tail = index;
     }
 
-    /// @notice Remove a order from the queue
+    /// @notice Remove an order from the queue.
     /// @param queue Order queue
     /// @param index Index of the order in order queue
-    function _removeOrder(OrderQueue storage queue, uint256 index) internal {
-        Order memory order = queue.list[index];
+    /// @return Index of the next order
+    function _removeOrder(OrderQueue storage queue, uint256 index) internal returns (uint256) {
+        Order storage order = queue.list[index];
         queue.totalAmount -= order.fillable;
 
-        if (order.prev == 0) {
-            queue.head = order.next;
+        uint256 orderPrev = order.prev;
+        uint256 orderNext = order.next;
+        if (orderPrev == 0) {
+            queue.head = orderNext;
         } else {
-            queue.list[order.prev].next = order.next;
+            queue.list[orderPrev].next = orderNext;
         }
 
-        if (order.next == 0) {
-            queue.tail = order.prev;
+        if (orderNext == 0) {
+            queue.tail = orderPrev;
         } else {
-            queue.list[order.next].prev = order.prev;
+            queue.list[orderNext].prev = orderPrev;
         }
 
         delete queue.list[index];
+        return orderNext;
     }
 }

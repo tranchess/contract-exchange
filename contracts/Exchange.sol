@@ -630,9 +630,10 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         require(index != 0, "invalid order");
         require(pdLevel <= bestBids[conversionID][tranche], "invalid pd level");
         OrderQueue storage orderQueue = bids[conversionID][tranche][pdLevel];
-        Order memory order = orderQueue.list[index];
+        Order storage order = orderQueue.list[index];
         require(order.makerAddress == makerAddress, "invalid maker address");
 
+        uint256 fillable = order.fillable;
         emit BidOrderCanceled(
             makerAddress,
             tranche,
@@ -640,7 +641,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
             order.amount,
             conversionID,
             index,
-            order.fillable
+            fillable
         );
         _removeOrder(orderQueue, index);
 
@@ -656,7 +657,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
             bestBids[conversionID][tranche] = bestBid;
         }
 
-        IERC20(quoteAssetAddress).transfer(makerAddress, order.fillable);
+        IERC20(quoteAssetAddress).transfer(makerAddress, fillable);
     }
 
     /// @dev Cancel an ask order
@@ -676,10 +677,10 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         require(index != 0, "invalid order");
         require(pdLevel >= bestAsks[conversionID][tranche], "invalid pd level");
         OrderQueue storage orderQueue = asks[conversionID][tranche][pdLevel];
-        Order memory order = orderQueue.list[index];
-        require(order.makerAddress != address(0), "invalid order");
+        Order storage order = orderQueue.list[index];
         require(order.makerAddress == makerAddress, "invalid maker address");
 
+        uint256 fillable = order.fillable;
         emit AskOrderCanceled(
             makerAddress,
             tranche,
@@ -687,7 +688,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
             order.amount,
             conversionID,
             index,
-            order.fillable
+            fillable
         );
         _removeOrder(orderQueue, index);
 
@@ -704,11 +705,11 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         }
 
         if (tranche == TRANCHE_P) {
-            _convertAndUnlock(makerAddress, order.fillable, 0, 0, order.conversionID);
+            _convertAndUnlock(makerAddress, fillable, 0, 0, conversionID);
         } else if (tranche == TRANCHE_A) {
-            _convertAndUnlock(makerAddress, 0, order.fillable, 0, order.conversionID);
+            _convertAndUnlock(makerAddress, 0, fillable, 0, conversionID);
         } else if (tranche == TRANCHE_B) {
-            _convertAndUnlock(makerAddress, 0, 0, order.fillable, order.conversionID);
+            _convertAndUnlock(makerAddress, 0, 0, fillable, conversionID);
         }
     }
 
@@ -789,13 +790,14 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
 
                 totalTrade = _addBuyTrade(totalTrade, currentTrade);
                 _fillAskOrder(tranche, periodID, orderQueue, order, currentTrade);
-                if (order.fillable == 0) {
-                    _removeOrder(orderQueue, index);
-                }
                 context.lastMatchedPDLevel = i;
                 context.lastMatchedOrderIndex = index;
                 context.lastMatchedAmount = currentTrade.reservedBase;
-                index = order.next;
+                if (order.fillable == 0) {
+                    index = _removeOrder(orderQueue, index);
+                } else {
+                    index = order.next;
+                }
             }
 
             if (quoteAmount == totalTrade.frozenQuote) {
@@ -906,13 +908,14 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
 
                 totalTrade = _addSellTrade(totalTrade, currentTrade);
                 _fillBidOrder(tranche, periodID, orderQueue, order, currentTrade);
-                if (order.fillable == 0) {
-                    _removeOrder(orderQueue, index);
-                }
                 context.lastMatchedPDLevel = i - 1;
                 context.lastMatchedOrderIndex = index;
                 context.lastMatchedAmount = currentTrade.reservedQuote;
-                index = order.next;
+                if (order.fillable == 0) {
+                    index = _removeOrder(orderQueue, index);
+                } else {
+                    index = order.next;
+                }
             }
 
             if (baseAmount == totalTrade.frozenBase) {
