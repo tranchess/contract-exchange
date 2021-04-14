@@ -39,7 +39,7 @@ contract AccountData is ITrancheIndex {
 
     /// @dev This function should be call as a "view" function off-chain to get the return value,
     ///      e.g. using `contract.getAccountExchangeData.call(exchangeAddress, account)` in web3
-    ///      or `contract.callStatic["claimableRewards"](account)` in ethers.js.
+    ///      or `contract.callStatic["getAccountExchangeData"](exchangeAddress, account)` in ethers.js.
     function getAccountExchangeData(address exchangeAddress, address account)
         external
         returns (ExchangeData memory exchangeData)
