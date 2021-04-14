@@ -1082,20 +1082,24 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
     /// @return executionBase Real amount of base asset waiting for settlment
     function _buyTradeResult(PendingBuyTrade memory buyTrade, uint256 nav)
         internal
-        pure
+        view
         returns (uint256 executionQuote, uint256 executionBase)
     {
-        uint256 effectiveQuote = buyTrade.effectiveQuote;
         uint256 reservedBase = buyTrade.reservedBase;
-        if (effectiveQuote < reservedBase * nav) {
+        uint256 normalizedEffectiveQuote = buyTrade.effectiveQuote.mul(_quoteDecimalMultiplier);
+        uint256 normalizedReservedQuote = reservedBase.multiplyDecimal(nav);
+        if (normalizedEffectiveQuote < normalizedReservedQuote) {
             // Reserved base is enough to execute the trade.
             // nav is always positive here
-            return (buyTrade.frozenQuote, effectiveQuote / nav);
+            return (buyTrade.frozenQuote, normalizedEffectiveQuote.divideDecimal(nav));
+        } else {
+            // Reserved base is not enough. The trade is partially executed
+            // and a fraction of frozenQuote is returned to the taker.
+            return (
+                buyTrade.frozenQuote.mul(normalizedReservedQuote).div(normalizedEffectiveQuote),
+                reservedBase
+            );
         }
-
-        // Reserved base is not enough. The trade is partially executed
-        // and a fraction of frozenQuote is returned to the taker.
-        return ((buyTrade.frozenQuote * reservedBase * nav) / effectiveQuote, reservedBase);
     }
 
     /// @dev Calculate the result of a pending sell trade with a given NAV
@@ -1105,19 +1109,23 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
     /// @return executionBase Real amount of base asset waiting for settlment
     function _sellTradeResult(PendingSellTrade memory sellTrade, uint256 nav)
         internal
-        pure
+        view
         returns (uint256 executionQuote, uint256 executionBase)
     {
-        uint256 effectiveBase = sellTrade.effectiveBase;
         uint256 reservedQuote = sellTrade.reservedQuote;
-        if (effectiveBase * nav < reservedQuote) {
+        uint256 normalizedEffectiveQuote = sellTrade.effectiveBase.multiplyDecimal(nav);
+        uint256 normalizedReservedQuote = reservedQuote.mul(_quoteDecimalMultiplier);
+        if (normalizedEffectiveQuote < normalizedReservedQuote) {
             // Reserved quote is enough to execute the trade.
-            return (effectiveBase * nav, sellTrade.frozenBase);
+            return (normalizedEffectiveQuote.div(_quoteDecimalMultiplier), sellTrade.frozenBase);
+        } else {
+            // Reserved quote is not enough. The trade is partially executed
+            // and a fraction of frozenBase is returned to the taker.
+            return (
+                reservedQuote,
+                sellTrade.frozenBase.mul(normalizedReservedQuote).div(normalizedEffectiveQuote)
+            );
         }
-
-        // Reserved quote is not enough. The trade is partially executed
-        // and a fraction of frozenBase is returned to the taker.
-        return (reservedQuote, (sellTrade.frozenBase * reservedQuote) / nav / effectiveBase);
     }
 
     modifier onlyActive() {
