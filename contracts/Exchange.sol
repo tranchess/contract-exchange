@@ -1000,31 +1000,31 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         PendingTrade storage pendingTrade = pendingTrades[account][tranche][periodID];
 
         // Settle buy trade
-        PendingBuyTrade memory makerSell = pendingTrade.makerSell;
-        if (makerSell.frozenQuote > 0) {
-            (uint256 executionQuote, uint256 executionBase) =
-                _buyTradeResult(makerSell, estimatedNav);
-            baseAmount += executionBase;
-
-            uint256 refundQuote = makerSell.frozenQuote.sub(executionQuote);
-            quoteAmount += refundQuote;
-
-            // Delete by zeroing it out
-            delete pendingTrade.makerSell;
-        }
-
-        // Settle sell trade
         PendingSellTrade memory makerBuy = pendingTrade.makerBuy;
         if (makerBuy.frozenBase > 0) {
             (uint256 executionQuote, uint256 executionBase) =
                 _sellTradeResult(makerBuy, estimatedNav);
-            quoteAmount += executionQuote;
+            baseAmount += executionBase;
 
-            uint256 refundBase = makerBuy.frozenBase.sub(executionBase);
-            baseAmount += refundBase;
+            uint256 refundQuote = makerBuy.reservedQuote.sub(executionQuote);
+            quoteAmount += refundQuote;
 
             // Delete by zeroing it out
             delete pendingTrade.makerBuy;
+        }
+
+        // Settle sell trade
+        PendingBuyTrade memory makerSell = pendingTrade.makerSell;
+        if (makerSell.frozenQuote > 0) {
+            (uint256 executionQuote, uint256 executionBase) =
+                _buyTradeResult(makerSell, estimatedNav);
+            quoteAmount += executionQuote;
+
+            uint256 refundBase = makerSell.reservedBase.sub(executionBase);
+            baseAmount += refundBase;
+
+            // Delete by zeroing it out
+            delete pendingTrade.makerSell;
         }
     }
 
