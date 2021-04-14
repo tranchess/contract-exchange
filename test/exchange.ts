@@ -111,15 +111,14 @@ describe("Exchange", function () {
             MIN_BID_AMOUNT,
             MIN_ASK_AMOUNT
         );
+        const exchangeInitTx = await exchangeImpl.populateTransaction.init(MAKER_REQUIREMENT);
         const TranchessProxy = await ethers.getContractFactory("TranchessProxy");
         const exchangeProxy = await TranchessProxy.connect(owner).deploy(
             exchangeImpl.address,
             owner.address,
-            "0x"
+            exchangeInitTx.data
         );
-
         const exchange = Exchange.attach(exchangeProxy.address);
-        await exchange.init(MAKER_REQUIREMENT);
 
         // Initialize balance
         await shareP.mock.transferFrom.returns(true);

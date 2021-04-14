@@ -9,4 +9,6 @@ interface IChess is IERC20 {
     function mint(address account, uint256 amount) external;
 
     function futureDayTimeWrite() external returns (uint256, uint256);
+
+    function addMinter(address account) external;
 }
