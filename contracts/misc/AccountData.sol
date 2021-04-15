@@ -9,6 +9,8 @@ import "../interfaces/ITrancheIndex.sol";
 interface IExchange {
     function isMaker(address account) external view returns (bool);
 
+    function makerExpiration(address account) external view returns (uint256);
+
     function availableBalanceOf(uint256 tranche, address account) external view returns (uint256);
 
     function lockedBalanceOf(uint256 tranche, address account) external view returns (uint256);
@@ -27,6 +29,7 @@ contract AccountData is ITrancheIndex {
         Shares available;
         Shares locked;
         bool isMaker;
+        uint256 makerExpiration;
         uint256 reward;
     }
 
@@ -52,6 +55,7 @@ contract AccountData is ITrancheIndex {
         exchangeData.locked.a = exchange.lockedBalanceOf(TRANCHE_A, account);
         exchangeData.locked.b = exchange.lockedBalanceOf(TRANCHE_B, account);
         exchangeData.isMaker = exchange.isMaker(account);
+        exchangeData.makerExpiration = exchange.makerExpiration(account);
         exchangeData.reward = exchange.claimableRewards(account);
     }
 
