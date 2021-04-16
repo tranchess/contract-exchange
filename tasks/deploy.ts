@@ -1,6 +1,7 @@
 import { task } from "hardhat/config";
 import fs = require("fs");
 import path = require("path");
+import { execSync } from "child_process";
 import editJsonFile = require("edit-json-file");
 import {
     TEST_FUND,
@@ -42,6 +43,15 @@ task("deploy", "Deploy contracts", async (_args, hre) => {
     const [deployer] = await ethers.getSigners();
 
     await hre.run("compile");
+
+    let gitVersion;
+    try {
+        gitVersion = execSync("git rev-parse HEAD").toString().trim();
+    } catch (e) {
+        gitVersion = "N/A";
+    }
+    addressFile.set("git_version", gitVersion);
+    addressFile.set("time", new Date().toJSON());
 
     let fundAddress;
     let chessAddress;
