@@ -5,14 +5,12 @@ import editJsonFile = require("edit-json-file");
 import {
     TEST_FUND,
     TEST_CHESS,
-    TEST_CHESS_CONTROLLER,
     TEST_USDC,
     TEST_VOTING_ESCROW,
     TEST_MIN_ORDER_AMOUNT,
     TEST_MAKER_REQUIREMENT,
     STAGING_FUND,
     STAGING_CHESS,
-    STAGING_CHESS_CONTROLLER,
     STAGING_USDC,
     STAGING_VOTING_ESCROW,
     STAGING_MIN_ORDER_AMOUNT,
@@ -36,7 +34,6 @@ task("deploy", "Deploy contracts", async (_args, hre) => {
 
     let fundAddress;
     let chessAddress;
-    let chessControllerAddress;
     let usdcAddress;
     let votingEscrowAddress;
     let minOrderAmount;
@@ -44,7 +41,6 @@ task("deploy", "Deploy contracts", async (_args, hre) => {
     if (hre.network.name === "test") {
         fundAddress = TEST_FUND;
         chessAddress = TEST_CHESS;
-        chessControllerAddress = TEST_CHESS_CONTROLLER;
         usdcAddress = TEST_USDC;
         votingEscrowAddress = TEST_VOTING_ESCROW;
         minOrderAmount = TEST_MIN_ORDER_AMOUNT;
@@ -52,7 +48,6 @@ task("deploy", "Deploy contracts", async (_args, hre) => {
     } else if (hre.network.name === "staging") {
         fundAddress = STAGING_FUND;
         chessAddress = STAGING_CHESS;
-        chessControllerAddress = STAGING_CHESS_CONTROLLER;
         usdcAddress = STAGING_USDC;
         votingEscrowAddress = STAGING_VOTING_ESCROW;
         minOrderAmount = STAGING_MIN_ORDER_AMOUNT;
@@ -65,11 +60,16 @@ task("deploy", "Deploy contracts", async (_args, hre) => {
     const usdc = await ethers.getContractAt("ERC20", usdcAddress);
     const usdcDecimals = await usdc.decimals();
 
+    const ChessController = await ethers.getContractFactory("ChessController");
+    const chessController = await ChessController.deploy();
+    contractAddress.set("chess_controller", chessController.address);
+    console.log("ChessController:", chessController.address);
+
     const Exchange = await ethers.getContractFactory("Exchange");
     const exchangeImpl = await Exchange.deploy(
         fundAddress,
         chessAddress,
-        chessControllerAddress,
+        chessController.address,
         usdcAddress,
         usdcDecimals,
         votingEscrowAddress,
