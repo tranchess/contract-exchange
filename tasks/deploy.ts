@@ -107,7 +107,8 @@ task("deploy", "Deploy contracts", async (_args, hre) => {
     const exchangeProxy = await TranchessProxy.deploy(
         exchangeImpl.address,
         deployer.address,
-        exchangeInitTx.data
+        exchangeInitTx.data,
+        { gasLimit: 1e6 } // Gas estimation may fail
     );
     const exchange = Exchange.attach(exchangeProxy.address);
     addressFile.set("exchange", exchange.address);
