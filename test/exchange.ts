@@ -379,7 +379,7 @@ describe("Exchange", function () {
             );
         });
 
-        it("Should do nothing if no order can be matched", async function () {
+        it.skip("Should do nothing if no order can be matched", async function () {
             await fund.mock.extrapolateNav.returns(
                 parseEther("1"),
                 parseEther("1"),
@@ -433,7 +433,7 @@ describe("Exchange", function () {
             );
         });
 
-        it("Should do nothing if no order can be matched", async function () {
+        it.skip("Should do nothing if no order can be matched", async function () {
             await fund.mock.extrapolateNav.returns(
                 parseEther("1"),
                 parseEther("1"),
