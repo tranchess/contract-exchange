@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.6.9;
-pragma experimental ABIEncoderV2;
+pragma solidity >=0.6.10 <0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/math/Math.sol";
@@ -27,7 +26,7 @@ abstract contract Staking is ITrancheIndex {
     event Deposited(uint256 tranche, address account, uint256 amount);
     event Withdrawn(uint256 tranche, address account, uint256 amount);
 
-    /// @notice UTC time of a day when the fund settles.
+    /// @dev UTC time of a day when the fund settles.
     uint256 private constant SETTLEMENT_TIME = 14 hours;
     uint256 private constant MAX_ITERATIONS = 500;
 
