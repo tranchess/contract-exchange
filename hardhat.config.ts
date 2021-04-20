@@ -36,7 +36,7 @@ if (STAGING_DEPLOYER_PK && STAGING_ETH_RPC && STAGING_ETH_CHAIN_ID) {
 const config: HardhatUserConfig = {
     networks: networks,
     solidity: {
-        version: "0.6.9",
+        version: "0.6.12",
         settings: {
             optimizer: {
                 enabled: true,
