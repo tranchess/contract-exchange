@@ -8,9 +8,12 @@ const parseUsdc = (value: string) => parseUnits(value, 6);
 import { deployMockForName } from "./mock";
 
 const EPOCH = 1800; // 30 min
+const USDC_TO_ETHER = parseUnits("1", 12);
+const MAKER_RESERVE_BPS = 11000; // 110%
 const TRANCHE_P = 0;
 const TRANCHE_A = 1;
 const TRANCHE_B = 2;
+
 const USER1_USDC = parseUsdc("100000");
 const USER1_P = parseEther("10000");
 const USER1_A = parseEther("20000");
@@ -19,6 +22,10 @@ const USER2_USDC = parseUsdc("200000");
 const USER2_P = parseEther("20000");
 const USER2_A = parseEther("40000");
 const USER2_B = parseEther("60000");
+const USER3_USDC = parseUsdc("300000");
+const USER3_P = parseEther("30000");
+const USER3_A = parseEther("60000");
+const USER3_B = parseEther("90000");
 const MIN_BID_AMOUNT = parseUsdc("1");
 const MIN_ASK_AMOUNT = parseEther("1");
 const MAKER_REQUIREMENT = parseEther("10000");
@@ -43,6 +50,7 @@ describe("Exchange", function () {
         readonly chess: MockContract;
         readonly chessController: MockContract;
         readonly usdc: Contract;
+        readonly votingEscrow: MockContract;
         readonly exchange: Contract;
     }
 
@@ -65,6 +73,7 @@ describe("Exchange", function () {
     let chess: MockContract;
     let chessController: MockContract;
     let usdc: Contract;
+    let votingEscrow: MockContract;
     let exchange: Contract;
 
     let tranche_list: { tranche: number; share: MockContract }[];
@@ -130,17 +139,22 @@ describe("Exchange", function () {
         await exchange.connect(user2).deposit(TRANCHE_P, USER2_P);
         await exchange.connect(user2).deposit(TRANCHE_A, USER2_A);
         await exchange.connect(user2).deposit(TRANCHE_B, USER2_B);
+        await exchange.connect(user3).deposit(TRANCHE_P, USER3_P);
+        await exchange.connect(user3).deposit(TRANCHE_A, USER3_A);
+        await exchange.connect(user3).deposit(TRANCHE_B, USER3_B);
         await shareP.mock.transferFrom.revertsWithReason("Mock on the method is not initialized");
         await shareA.mock.transferFrom.revertsWithReason("Mock on the method is not initialized");
         await shareB.mock.transferFrom.revertsWithReason("Mock on the method is not initialized");
         await usdc.mint(user1.address, USER1_USDC);
         await usdc.mint(user2.address, USER2_USDC);
+        await usdc.mint(user3.address, USER3_USDC);
         await usdc.connect(user1).approve(exchange.address, USER1_USDC);
         await usdc.connect(user2).approve(exchange.address, USER2_USDC);
+        await usdc.connect(user3).approve(exchange.address, USER3_USDC);
 
-        // Grant user1 and user2 to be maker for 1000 epochs
-        await votingEscrow.mock.getTimestampDropBelow.returns(startEpoch + EPOCH * 1000);
+        await votingEscrow.mock.getTimestampDropBelow.returns(startEpoch + EPOCH * 500);
         await exchange.connect(user1).applyForMaker();
+        await votingEscrow.mock.getTimestampDropBelow.returns(startEpoch + EPOCH * 1000);
         await exchange.connect(user2).applyForMaker();
         await votingEscrow.mock.getTimestampDropBelow.revertsWithReason(
             "Mock on the method is not initialized"
@@ -157,6 +171,7 @@ describe("Exchange", function () {
             chess,
             chessController,
             usdc,
+            votingEscrow,
             exchange: exchange.connect(user1),
         };
     }
@@ -183,6 +198,7 @@ describe("Exchange", function () {
         chess = fixtureData.chess;
         chessController = fixtureData.chessController;
         usdc = fixtureData.usdc;
+        votingEscrow = fixtureData.votingEscrow;
         exchange = fixtureData.exchange;
 
         tranche_list = [
@@ -217,7 +233,7 @@ describe("Exchange", function () {
             await expect(
                 exchange.connect(user3).placeBid(TRANCHE_P, 0, MIN_BID_AMOUNT, 0, 0)
             ).to.be.revertedWith("Only maker");
-            await advanceBlockAtTime(startEpoch + EPOCH * 1000);
+            await advanceBlockAtTime(startEpoch + EPOCH * 1500);
             await expect(exchange.placeBid(TRANCHE_P, 0, MIN_BID_AMOUNT, 0, 0)).to.be.revertedWith(
                 "Only maker"
             );
@@ -357,7 +373,65 @@ describe("Exchange", function () {
         });
     });
 
-    describe("buyP", function () {
+    // Constants in orderBookFixture
+    const ASK_1_PD_2 = parseEther("60");
+    const ASK_1_PD_1 = parseEther("20");
+    const ASK_2_PD_1 = parseEther("30");
+    const ASK_3_PD_1 = parseEther("50");
+    const ASK_1_PD_0 = parseEther("100");
+    const BID_1_PD_0 = parseUsdc("100");
+    const BID_1_PD_N1 = parseUsdc("50");
+    const BID_2_PD_N1 = parseUsdc("20");
+    const BID_3_PD_N1 = parseUsdc("30");
+    const BID_1_PD_N2 = parseUsdc("80");
+
+    async function orderBookFixture(): Promise<FixtureData> {
+        const f = await loadFixture(deployFixture);
+        const u2 = f.wallets.user2;
+        const u3 = f.wallets.user3;
+        await f.votingEscrow.mock.getTimestampDropBelow.returns(f.startEpoch + EPOCH * 1000);
+        await f.exchange.connect(u3).applyForMaker();
+        await f.votingEscrow.mock.getTimestampDropBelow.revertsWithReason(
+            "Mock on the method is not initialized"
+        );
+
+        // Order book of Share P
+        // Ask:
+        // +2%   60(user3)
+        // +1%   20(user2)  30(user3)  50(user2)
+        //  0%  100(user2)
+        // Bid:
+        //  0%  100(user2)
+        // -1%   50(user3)  20(user2)  30(user2)
+        // -2%   80(user3)
+        await f.exchange.connect(u3).placeAsk(TRANCHE_P, 48, ASK_1_PD_2, 0, 0);
+        await f.exchange.connect(u2).placeAsk(TRANCHE_P, 44, ASK_1_PD_1, 0, 0);
+        await f.exchange.connect(u3).placeAsk(TRANCHE_P, 44, ASK_2_PD_1, 0, 0);
+        await f.exchange.connect(u2).placeAsk(TRANCHE_P, 44, ASK_3_PD_1, 0, 0);
+        await f.exchange.connect(u2).placeAsk(TRANCHE_P, 40, ASK_1_PD_0, 0, 0);
+        await f.exchange.connect(u2).placeBid(TRANCHE_P, 40, BID_1_PD_0, 0, 0);
+        await f.exchange.connect(u3).placeBid(TRANCHE_P, 36, BID_1_PD_N1, 0, 0);
+        await f.exchange.connect(u2).placeBid(TRANCHE_P, 36, BID_2_PD_N1, 0, 0);
+        await f.exchange.connect(u2).placeBid(TRANCHE_P, 36, BID_3_PD_N1, 0, 0);
+        await f.exchange.connect(u3).placeBid(TRANCHE_P, 32, BID_1_PD_N2, 0, 0);
+
+        return f;
+    }
+
+    describe("buyP()", function () {
+        let outerFixture: Fixture<FixtureData>;
+
+        before(function () {
+            // Override fixture
+            outerFixture = currentFixture;
+            currentFixture = orderBookFixture;
+        });
+
+        after(function () {
+            // Restore fixture
+            currentFixture = outerFixture;
+        });
+
         it("Should revert if exchange is inactive", async function () {
             await fund.mock.isExchangeActive.returns(false);
             await expect(exchange.buyP(0, 40, 1)).to.be.revertedWith("Exchange is inactive");
@@ -379,44 +453,241 @@ describe("Exchange", function () {
             );
         });
 
-        it.skip("Should do nothing if no order can be matched", async function () {
+        it("Should revert if no order can be matched", async function () {
             await fund.mock.extrapolateNav.returns(
                 parseEther("1"),
                 parseEther("1"),
                 parseEther("1")
             );
-            await exchange.buyP(0, 40, 1);
-            expect(await usdc.balanceOf(addr1)).to.equal(USER1_USDC);
+            await expect(exchange.buyP(0, 39, 1)).to.be.revertedWith(
+                "Nothing can be bought at the given premium-discount level"
+            );
         });
 
-        it("Should match at estimated NAV when taker is completely filled", async function () {
-            await exchange.connect(user2).placeAsk(TRANCHE_P, 40, parseEther("10"), 0, 0);
+        // Buy shares that can be completely filled by the best maker order.
+        // USDC amount in the taker order literally equals to half of the amount of shares
+        // in the best maker order.
+        describe("Taker is completely filled with a single maker order", function () {
+            const estimatedNav = parseEther("1.1");
+            const matchedUsdc = ASK_1_PD_0.div(2).div(USDC_TO_ETHER);
+            const matchedShares = matchedUsdc
+                .mul(USDC_TO_ETHER)
+                .mul(MAKER_RESERVE_BPS)
+                .div(10000)
+                .mul(parseEther("1"))
+                .div(estimatedNav);
+            const buyTxBuilder = () => exchange.buyP(0, 48, matchedUsdc);
 
-            // 10 USDC buys 5 P at NAV 2, 5.5 P is frozen
-            await fund.mock.extrapolateNav.returns(parseEther("2"), 0, 0);
-            await exchange.buyP(0, 48, parseUsdc("10"));
+            beforeEach(async function () {
+                await fund.mock.extrapolateNav.returns(estimatedNav, 0, 0);
+            });
 
-            const order = await exchange.getAskOrder(0, TRANCHE_P, 40, 1);
-            expect(order.fillable).to.equal(parseEther("4.5"));
-            expect(await usdc.balanceOf(addr1)).to.equal(USER1_USDC.sub(parseUsdc("10")));
-            expect(await usdc.balanceOf(exchange.address)).to.equal(parseUsdc("10"));
+            it("Should update balance", async function () {
+                await expect(buyTxBuilder).to.changeTokenBalances(
+                    usdc,
+                    [user1, exchange],
+                    [matchedUsdc.mul(-1), matchedUsdc]
+                );
+            });
+
+            it("Should update the maker order", async function () {
+                await buyTxBuilder();
+                const order = await exchange.getAskOrder(0, TRANCHE_P, 40, 1);
+                expect(order.fillable).to.equal(ASK_1_PD_0.sub(matchedShares));
+            });
+
+            it("Should update pending trade", async function () {
+                await buyTxBuilder();
+                const takerTrade = await exchange.pendingTrades(addr1, TRANCHE_P, startEpoch);
+                expect(takerTrade.takerBuy.frozenQuote).to.equal(matchedUsdc);
+                expect(takerTrade.takerBuy.reservedBase).to.equal(matchedShares);
+                const makerTrade = await exchange.pendingTrades(addr2, TRANCHE_P, startEpoch);
+                expect(makerTrade.makerSell.frozenQuote).to.equal(matchedUsdc);
+                expect(makerTrade.makerSell.reservedBase).to.equal(matchedShares);
+            });
+
+            it("Should emit event", async function () {
+                await expect(buyTxBuilder())
+                    .to.emit(exchange, "BuyTrade")
+                    .withArgs(addr1, TRANCHE_P, matchedUsdc, 0, 40, 1, matchedShares);
+            });
+
+            it("Should keep the best bid level unchanged", async function () {
+                expect(await exchange.bestBids(0, TRANCHE_P)).to.equal(40);
+            });
         });
 
-        it("Should match at estimated NAV when maker is completely filled", async function () {
-            await exchange.connect(user2).placeAsk(TRANCHE_P, 40, parseEther("11"), 0, 0);
+        // USDC amount in the taker order literally equals to the amount of shares
+        // in the best maker order. Estimated NAV is 0.9 and the maker order is completely filled.
+        describe("A single maker is completely filled and the taker is partially filled", function () {
+            const estimatedNav = parseEther("0.9");
+            const matchedUsdc = ASK_1_PD_0.div(USDC_TO_ETHER)
+                .mul(estimatedNav)
+                .div(parseEther("1"))
+                .mul(10000)
+                .div(MAKER_RESERVE_BPS);
+            const matchedShares = ASK_1_PD_0;
+            const buyTxBuilder = () => exchange.buyP(0, 41, ASK_1_PD_0.div(USDC_TO_ETHER));
 
-            // 20 USDC buys 10 P at NAV 2, 11 P is frozen
-            await fund.mock.extrapolateNav.returns(parseEther("2"), 0, 0);
-            await exchange.buyP(0, 48, parseUsdc("30"));
+            beforeEach(async function () {
+                await fund.mock.extrapolateNav.returns(estimatedNav, 0, 0);
+            });
 
-            const order = await exchange.getAskOrder(0, TRANCHE_P, 40, 1);
-            expect(order.fillable).to.equal(parseEther("0"));
-            expect(await usdc.balanceOf(addr1)).to.equal(USER1_USDC.sub(parseUsdc("20")));
-            expect(await usdc.balanceOf(exchange.address)).to.equal(parseUsdc("20"));
+            it("Should update balance", async function () {
+                await expect(buyTxBuilder).to.changeTokenBalances(
+                    usdc,
+                    [user1, exchange],
+                    [matchedUsdc.mul(-1), matchedUsdc]
+                );
+            });
+
+            it("Should delete the maker order", async function () {
+                await buyTxBuilder();
+                const queue = await exchange.asks(0, TRANCHE_P, 40);
+                expect(queue.head).to.equal(0);
+                expect(queue.tail).to.equal(0);
+                const order = await exchange.getAskOrder(0, TRANCHE_P, 40, 1);
+                expect(order.maker).to.equal(ethers.constants.AddressZero);
+                expect(order.amount).to.equal(0);
+                expect(order.fillable).to.equal(0);
+            });
+
+            it("Should update pending trade", async function () {
+                await buyTxBuilder();
+                const takerTrade = await exchange.pendingTrades(addr1, TRANCHE_P, startEpoch);
+                expect(takerTrade.takerBuy.frozenQuote).to.equal(matchedUsdc);
+                expect(takerTrade.takerBuy.reservedBase).to.equal(matchedShares);
+                const makerTrade = await exchange.pendingTrades(addr2, TRANCHE_P, startEpoch);
+                expect(makerTrade.makerSell.frozenQuote).to.equal(matchedUsdc);
+                expect(makerTrade.makerSell.reservedBase).to.equal(matchedShares);
+            });
+
+            it("Should emit event", async function () {
+                await expect(buyTxBuilder())
+                    .to.emit(exchange, "BuyTrade")
+                    .withArgs(addr1, TRANCHE_P, matchedUsdc, 0, 40, 1, matchedShares);
+            });
+
+            it("May update the best bid level", async function () {
+                expect(await exchange.bestBids(0, TRANCHE_P)).to.lte(44);
+            });
         });
+
+        // Buy shares with 200 USDC at premium 2%. Estimated NAV is 1.
+        // All orders at 0% and 1% are filled. The order at 2% is partially filled.
+        describe("Fill orders at multiple premium-discount level", function () {
+            const matchedUsdc = parseUsdc("200");
+            const matchedUsdcAt0 = ASK_1_PD_0.div(USDC_TO_ETHER).mul(10000).div(MAKER_RESERVE_BPS);
+            const matchedUsdcOrder1At1 = ASK_1_PD_1.div(USDC_TO_ETHER)
+                .mul(101)
+                .div(100)
+                .mul(10000)
+                .div(MAKER_RESERVE_BPS);
+            const matchedUsdcOrder2At1 = ASK_2_PD_1.div(USDC_TO_ETHER)
+                .mul(101)
+                .div(100)
+                .mul(10000)
+                .div(MAKER_RESERVE_BPS);
+            const matchedUsdcOrder3At1 = ASK_3_PD_1.div(USDC_TO_ETHER)
+                .mul(101)
+                .div(100)
+                .mul(10000)
+                .div(MAKER_RESERVE_BPS);
+            const matchedUsdcAt1 = matchedUsdcOrder1At1
+                .add(matchedUsdcOrder2At1)
+                .add(matchedUsdcOrder3At1);
+            const matchedUsdcAt2 = matchedUsdc.sub(matchedUsdcAt0).sub(matchedUsdcAt1);
+            const matchedSharesAt2 = matchedUsdcAt2
+                .mul(USDC_TO_ETHER)
+                .mul(MAKER_RESERVE_BPS)
+                .div(10000)
+                .mul(100)
+                .div(102);
+            const buyTxBuilder = () => exchange.buyP(0, 48, matchedUsdc);
+
+            beforeEach(async function () {
+                await fund.mock.extrapolateNav.returns(parseEther("1"), 0, 0);
+            });
+
+            it("Should update balance", async function () {
+                await expect(buyTxBuilder).to.changeTokenBalances(
+                    usdc,
+                    [user1, exchange],
+                    [matchedUsdc.mul(-1), matchedUsdc]
+                );
+            });
+
+            it("Should update maker orders", async function () {
+                await buyTxBuilder();
+                const queueAt0 = await exchange.asks(0, TRANCHE_P, 40);
+                expect(queueAt0.head).to.equal(0);
+                expect(queueAt0.tail).to.equal(0);
+                const queueAt1 = await exchange.asks(0, TRANCHE_P, 44);
+                expect(queueAt1.head).to.equal(0);
+                expect(queueAt1.tail).to.equal(0);
+                const queueAt2 = await exchange.asks(0, TRANCHE_P, 48);
+                expect(queueAt2.head).to.equal(1);
+                expect(queueAt2.tail).to.equal(1);
+                const order = await exchange.getAskOrder(0, TRANCHE_P, 48, 1);
+                expect(order.fillable).to.equal(ASK_1_PD_2.sub(matchedSharesAt2));
+            });
+
+            it("Should update pending trade", async function () {
+                await buyTxBuilder();
+                const takerTrade = await exchange.pendingTrades(addr1, TRANCHE_P, startEpoch);
+                expect(takerTrade.takerBuy.frozenQuote).to.equal(matchedUsdc);
+                expect(takerTrade.takerBuy.reservedBase).to.equal(
+                    ASK_1_PD_0.add(ASK_1_PD_1).add(ASK_2_PD_1).add(ASK_3_PD_1).add(matchedSharesAt2)
+                );
+                const maker2Trade = await exchange.pendingTrades(addr2, TRANCHE_P, startEpoch);
+                expect(maker2Trade.makerSell.frozenQuote).to.equal(
+                    matchedUsdcAt0.add(matchedUsdcOrder1At1).add(matchedUsdcOrder3At1)
+                );
+                expect(maker2Trade.makerSell.reservedBase).to.equal(
+                    ASK_1_PD_0.add(ASK_1_PD_1).add(ASK_3_PD_1)
+                );
+                const maker3Trade = await exchange.pendingTrades(addr3, TRANCHE_P, startEpoch);
+                expect(maker3Trade.makerSell.frozenQuote).to.equal(
+                    matchedUsdcOrder2At1.add(matchedUsdcAt2)
+                );
+                expect(maker3Trade.makerSell.reservedBase).to.equal(
+                    ASK_2_PD_1.add(matchedSharesAt2)
+                );
+            });
+
+            it("Should emit event", async function () {
+                await expect(buyTxBuilder())
+                    .to.emit(exchange, "BuyTrade")
+                    .withArgs(addr1, TRANCHE_P, matchedUsdc, 0, 48, 1, matchedSharesAt2);
+            });
+
+            it("May update the best bid level", async function () {
+                expect(await exchange.bestBids(0, TRANCHE_P)).to.lte(48);
+            });
+        });
+
+        // TODO skip expired maker, last order is skipped
     });
 
-    describe("sellP", function () {
+    describe("sellP()", function () {
+        let outerFixture: Fixture<FixtureData>;
+
+        before(function () {
+            // Override fixture
+            outerFixture = currentFixture;
+            currentFixture = orderBookFixture;
+        });
+
+        after(function () {
+            // Restore fixture
+            currentFixture = outerFixture;
+        });
+
+        it("Should revert if exchange is inactive", async function () {
+            await fund.mock.isExchangeActive.returns(false);
+            await expect(exchange.sellP(0, 40, 1)).to.be.revertedWith("Exchange is inactive");
+        });
+
         it("Should revert if price is not available", async function () {
             await twapOracle.mock.getTwap.returns(parseEther("0"));
             await expect(exchange.sellP(0, 40, 1)).to.be.revertedWith("Price is not available");
@@ -433,42 +704,221 @@ describe("Exchange", function () {
             );
         });
 
-        it.skip("Should do nothing if no order can be matched", async function () {
+        it("Should revert if no order can be matched", async function () {
             await fund.mock.extrapolateNav.returns(
                 parseEther("1"),
                 parseEther("1"),
                 parseEther("1")
             );
-            await exchange.sellP(0, 40, 1);
-            expect(await exchange.availableBalanceOf(TRANCHE_P, addr1)).to.equal(USER1_P);
-        });
-
-        it("Should match at estimated NAV when taker is completely filled", async function () {
-            await exchange.placeBid(TRANCHE_P, 40, parseUsdc("10"), 0, 0);
-
-            // 10 P sells for 5 USDC at NAV 0.5, 5.5 USDC is frozen
-            await fund.mock.extrapolateNav.returns(parseEther("0.5"), 0, 0);
-            await exchange.sellP(0, 32, parseEther("10"));
-
-            const order = await exchange.getBidOrder(0, TRANCHE_P, 40, 1);
-            expect(order.fillable).to.equal(parseUsdc("4.5"));
-            expect(await exchange.availableBalanceOf(TRANCHE_P, addr1)).to.equal(
-                USER1_P.sub(parseEther("10"))
+            await expect(exchange.sellP(0, 41, 1)).to.be.revertedWith(
+                "Nothing can be sold at the given premium-discount level"
             );
         });
 
-        it("Should match at estimated NAV when maker is completely filled", async function () {
-            await exchange.placeBid(TRANCHE_P, 40, parseUsdc("11"), 0, 0);
+        // Sell shares that can be completely filled by the best maker order.
+        // Share amount in the taker order literally equals to half of the amount of USDC
+        // in the best maker order.
+        describe("Taker is completely filled with a single maker order", function () {
+            const estimatedNav = parseEther("0.9");
+            const matchedShares = BID_1_PD_0.mul(USDC_TO_ETHER).div(2);
+            const matchedUsdc = matchedShares
+                .mul(MAKER_RESERVE_BPS)
+                .div(10000)
+                .mul(estimatedNav)
+                .div(parseEther("1"))
+                .div(USDC_TO_ETHER);
+            const sellTxBuilder = () => exchange.sellP(0, 32, matchedShares);
 
-            // 20 P sells for 10 USDC at NAV 0.5, 11 USDC is frozen
-            await fund.mock.extrapolateNav.returns(parseEther("0.5"), 0, 0);
-            await exchange.sellP(0, 32, parseEther("30"));
+            beforeEach(async function () {
+                await fund.mock.extrapolateNav.returns(estimatedNav, 0, 0);
+            });
 
-            const order = await exchange.getBidOrder(0, TRANCHE_P, 40, 1);
-            expect(order.fillable).to.equal(parseEther("0"));
-            expect(await exchange.availableBalanceOf(TRANCHE_P, addr1)).to.equal(
-                USER1_P.sub(parseEther("20"))
-            );
+            it("Should update balance", async function () {
+                await sellTxBuilder();
+                expect(await exchange.availableBalanceOf(TRANCHE_P, addr1)).to.equal(
+                    USER1_P.sub(matchedShares)
+                );
+            });
+
+            it("Should update the maker order", async function () {
+                await sellTxBuilder();
+                const order = await exchange.getBidOrder(0, TRANCHE_P, 40, 1);
+                expect(order.fillable).to.equal(BID_1_PD_0.sub(matchedUsdc));
+            });
+
+            it("Should update pending trade", async function () {
+                await sellTxBuilder();
+                const takerTrade = await exchange.pendingTrades(addr1, TRANCHE_P, startEpoch);
+                expect(takerTrade.takerSell.frozenBase).to.equal(matchedShares);
+                expect(takerTrade.takerSell.reservedQuote).to.equal(matchedUsdc);
+                const makerTrade = await exchange.pendingTrades(addr2, TRANCHE_P, startEpoch);
+                expect(makerTrade.makerBuy.frozenBase).to.equal(matchedShares);
+                expect(makerTrade.makerBuy.reservedQuote).to.equal(matchedUsdc);
+            });
+
+            it("Should emit event", async function () {
+                await expect(sellTxBuilder())
+                    .to.emit(exchange, "SellTrade")
+                    .withArgs(addr1, TRANCHE_P, matchedShares, 0, 40, 1, matchedUsdc);
+            });
+
+            it("Should keep the best ask level unchanged", async function () {
+                expect(await exchange.bestAsks(0, TRANCHE_P)).to.equal(40);
+            });
         });
+
+        // Share amount in the taker order literally equals to the amount of USDC
+        // in the best maker order. Estimated NAV is 1.1 and the maker order is completely filled.
+        describe("A single maker is completely filled and the taker is partially filled", function () {
+            const estimatedNav = parseEther("1.1");
+            const matchedShares = BID_1_PD_0.mul(USDC_TO_ETHER)
+                .mul(parseEther("1"))
+                .div(estimatedNav)
+                .mul(10000)
+                .div(MAKER_RESERVE_BPS);
+            const matchedUsdc = BID_1_PD_0;
+            const sellTxBuilder = () => exchange.sellP(0, 39, BID_1_PD_0.mul(USDC_TO_ETHER));
+
+            beforeEach(async function () {
+                await fund.mock.extrapolateNav.returns(estimatedNav, 0, 0);
+            });
+
+            it("Should update balance", async function () {
+                await sellTxBuilder();
+                expect(await exchange.availableBalanceOf(TRANCHE_P, addr1)).to.equal(
+                    USER1_P.sub(matchedShares)
+                );
+            });
+
+            it("Should delete the maker order", async function () {
+                await sellTxBuilder();
+                const queue = await exchange.bids(0, TRANCHE_P, 40);
+                expect(queue.head).to.equal(0);
+                expect(queue.tail).to.equal(0);
+                const order = await exchange.getBidOrder(0, TRANCHE_P, 40, 1);
+                expect(order.maker).to.equal(ethers.constants.AddressZero);
+                expect(order.amount).to.equal(0);
+                expect(order.fillable).to.equal(0);
+            });
+
+            it("Should update pending trade", async function () {
+                await sellTxBuilder();
+                const takerTrade = await exchange.pendingTrades(addr1, TRANCHE_P, startEpoch);
+                expect(takerTrade.takerSell.frozenBase).to.equal(matchedShares);
+                expect(takerTrade.takerSell.reservedQuote).to.equal(matchedUsdc);
+                const makerTrade = await exchange.pendingTrades(addr2, TRANCHE_P, startEpoch);
+                expect(makerTrade.makerBuy.frozenBase).to.equal(matchedShares);
+                expect(makerTrade.makerBuy.reservedQuote).to.equal(matchedUsdc);
+            });
+
+            it("Should emit event", async function () {
+                await expect(sellTxBuilder())
+                    .to.emit(exchange, "SellTrade")
+                    .withArgs(addr1, TRANCHE_P, matchedShares, 0, 40, 1, matchedUsdc);
+            });
+
+            it("May update the best ask level", async function () {
+                expect(await exchange.bestAsks(0, TRANCHE_P)).to.gte(36);
+            });
+        });
+
+        // Sell 200 shares at discount -2%. Estimated NAV is 1.
+        // All orders at 0% and -1% are filled. The order at -2% is partially filled.
+        describe("Fill orders at multiple premium-discount level", function () {
+            const matchedShares = parseEther("200");
+            const matchedSharesAt0 = BID_1_PD_0.mul(USDC_TO_ETHER)
+                .mul(10000)
+                .div(MAKER_RESERVE_BPS);
+            const matchedSharesOrder1AtN1 = BID_1_PD_N1.mul(USDC_TO_ETHER)
+                .mul(100)
+                .div(99)
+                .mul(10000)
+                .div(MAKER_RESERVE_BPS);
+            const matchedSharesOrder2AtN1 = BID_2_PD_N1.mul(USDC_TO_ETHER)
+                .mul(100)
+                .div(99)
+                .mul(10000)
+                .div(MAKER_RESERVE_BPS);
+            const matchedSharesOrder3AtN1 = BID_3_PD_N1.mul(USDC_TO_ETHER)
+                .mul(100)
+                .div(99)
+                .mul(10000)
+                .div(MAKER_RESERVE_BPS);
+            const matchedSharesAtN1 = matchedSharesOrder1AtN1
+                .add(matchedSharesOrder2AtN1)
+                .add(matchedSharesOrder3AtN1);
+            const matchedSharesAtN2 = matchedShares.sub(matchedSharesAt0).sub(matchedSharesAtN1);
+            const matchedUsdcAtN2 = matchedSharesAtN2
+                .mul(MAKER_RESERVE_BPS)
+                .div(10000)
+                .mul(98)
+                .div(100)
+                .div(USDC_TO_ETHER);
+            const sellTxBuilder = () => exchange.sellP(0, 32, matchedShares);
+
+            beforeEach(async function () {
+                await fund.mock.extrapolateNav.returns(parseEther("1"), 0, 0);
+            });
+
+            it("Should update balance", async function () {
+                await sellTxBuilder();
+                expect(await exchange.availableBalanceOf(TRANCHE_P, addr1)).to.equal(
+                    USER1_P.sub(matchedShares)
+                );
+            });
+
+            it("Should update maker orders", async function () {
+                await sellTxBuilder();
+                const queueAt0 = await exchange.bids(0, TRANCHE_P, 40);
+                expect(queueAt0.head).to.equal(0);
+                expect(queueAt0.tail).to.equal(0);
+                const queueAt1 = await exchange.bids(0, TRANCHE_P, 36);
+                expect(queueAt1.head).to.equal(0);
+                expect(queueAt1.tail).to.equal(0);
+                const queueAt2 = await exchange.bids(0, TRANCHE_P, 32);
+                expect(queueAt2.head).to.equal(1);
+                expect(queueAt2.tail).to.equal(1);
+                const order = await exchange.getBidOrder(0, TRANCHE_P, 32, 1);
+                expect(order.fillable).to.equal(BID_1_PD_N2.sub(matchedUsdcAtN2));
+            });
+
+            it("Should update pending trade", async function () {
+                await sellTxBuilder();
+                const takerTrade = await exchange.pendingTrades(addr1, TRANCHE_P, startEpoch);
+                expect(takerTrade.takerSell.frozenBase).to.equal(matchedShares);
+                expect(takerTrade.takerSell.reservedQuote).to.equal(
+                    BID_1_PD_0.add(BID_1_PD_N1)
+                        .add(BID_2_PD_N1)
+                        .add(BID_3_PD_N1)
+                        .add(matchedUsdcAtN2)
+                );
+                const maker2Trade = await exchange.pendingTrades(addr2, TRANCHE_P, startEpoch);
+                expect(maker2Trade.makerBuy.frozenBase).to.equal(
+                    matchedSharesAt0.add(matchedSharesOrder2AtN1).add(matchedSharesOrder3AtN1)
+                );
+                expect(maker2Trade.makerBuy.reservedQuote).to.equal(
+                    BID_1_PD_0.add(BID_2_PD_N1).add(BID_3_PD_N1)
+                );
+                const maker3Trade = await exchange.pendingTrades(addr3, TRANCHE_P, startEpoch);
+                expect(maker3Trade.makerBuy.frozenBase).to.equal(
+                    matchedSharesOrder1AtN1.add(matchedSharesAtN2)
+                );
+                expect(maker3Trade.makerBuy.reservedQuote).to.equal(
+                    BID_1_PD_N1.add(matchedUsdcAtN2)
+                );
+            });
+
+            it("Should emit event", async function () {
+                await expect(sellTxBuilder())
+                    .to.emit(exchange, "SellTrade")
+                    .withArgs(addr1, TRANCHE_P, matchedShares, 0, 32, 1, matchedUsdcAtN2);
+            });
+
+            it("May update the best ask level", async function () {
+                expect(await exchange.bestAsks(0, TRANCHE_P)).to.gte(32);
+            });
+        });
+
+        // TODO skip expired maker, last order is skipped
     });
 });
