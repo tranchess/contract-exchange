@@ -6,7 +6,7 @@ import "@openzeppelin/contracts/math/SafeMath.sol";
 /// @title Tranchess's Exchange Order Queue Contract
 /// @notice Order queue struct and implementation using doubly linked list
 /// @author Tranchess
-contract ExchangeOrderBook {
+library LibOrderBook {
     using SafeMath for uint256;
 
     struct Order {
@@ -31,7 +31,7 @@ contract ExchangeOrderBook {
     /// @param amount Amount to place in the order
     /// @param conversionID Current conversion ID
     /// @return index Index of the order in order queue
-    function _appendOrder(
+    function append(
         OrderQueue storage queue,
         address makerAddress,
         uint256 amount,
@@ -63,7 +63,7 @@ contract ExchangeOrderBook {
     /// @param queue Order queue
     /// @param index Index of the order in order queue
     /// @return Index of the next order
-    function _removeOrder(OrderQueue storage queue, uint256 index) internal returns (uint256) {
+    function remove(OrderQueue storage queue, uint256 index) internal returns (uint256) {
         Order storage order = queue.list[index];
         queue.totalAmount -= order.fillable;
 

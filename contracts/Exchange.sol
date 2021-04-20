@@ -5,16 +5,18 @@ pragma experimental ABIEncoderV2;
 import "./utils/SafeDecimalMath.sol";
 import "@openzeppelin/contracts/proxy/Initializable.sol";
 
+import "./libs/LibOrderBook.sol";
+
 import "./ExchangeRoles.sol";
-import "./ExchangeOrderBook.sol";
 import "./ExchangeTrade.sol";
 import "./Staking.sol";
 
 /// @title Tranchess's Exchange Contract
 /// @notice A decentralized exchange to match premium-discount orders and clear trades
 /// @author Tranchess
-contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, Initializable {
+contract Exchange is ExchangeRoles, ExchangeTrade, Staking, Initializable {
     using SafeDecimalMath for uint256;
+    using LibOrderBook for LibOrderBook.OrderQueue;
 
     /// @notice Identifier of a pending order
     struct OrderIdentifier {
@@ -171,8 +173,8 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         public identifiers;
 
     /// @notice Mapping of conversion ID => tranche => an array of order queues
-    mapping(uint256 => mapping(uint256 => OrderQueue[PD_LEVEL_COUNT])) public bids;
-    mapping(uint256 => mapping(uint256 => OrderQueue[PD_LEVEL_COUNT])) public asks;
+    mapping(uint256 => mapping(uint256 => LibOrderBook.OrderQueue[PD_LEVEL_COUNT])) public bids;
+    mapping(uint256 => mapping(uint256 => LibOrderBook.OrderQueue[PD_LEVEL_COUNT])) public asks;
 
     /// @notice Mapping of conversion ID => best bid premium-discount level of the three tranches
     mapping(uint256 => uint256[TRANCHE_COUNT]) public bestBids;
@@ -230,7 +232,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
             uint256 fillable
         )
     {
-        Order storage order = bids[conversionID][tranche][pdLevel].list[index];
+        LibOrderBook.Order storage order = bids[conversionID][tranche][pdLevel].list[index];
         maker = order.makerAddress;
         amount = order.amount;
         fillable = order.fillable;
@@ -250,7 +252,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
             uint256 fillable
         )
     {
-        Order storage order = asks[conversionID][tranche][pdLevel].list[index];
+        LibOrderBook.Order storage order = asks[conversionID][tranche][pdLevel].list[index];
         maker = order.makerAddress;
         amount = order.amount;
         fillable = order.fillable;
@@ -310,12 +312,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         IERC20(quoteAssetAddress).transferFrom(msg.sender, address(this), quoteAmount);
 
         uint256 index =
-            _appendOrder(
-                bids[conversionID][tranche][pdLevel],
-                msg.sender,
-                quoteAmount,
-                conversionID
-            );
+            bids[conversionID][tranche][pdLevel].append(msg.sender, quoteAmount, conversionID);
         if (bestBids[conversionID][tranche] < pdLevel) {
             bestBids[conversionID][tranche] = pdLevel;
         }
@@ -361,12 +358,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
 
         _lock(tranche, msg.sender, baseAmount);
         uint256 index =
-            _appendOrder(
-                asks[conversionID][tranche][pdLevel],
-                msg.sender,
-                baseAmount,
-                conversionID
-            );
+            asks[conversionID][tranche][pdLevel].append(msg.sender, baseAmount, conversionID);
         uint256 oldBestAsk = bestAsks[conversionID][tranche];
         if (oldBestAsk > pdLevel) {
             bestAsks[conversionID][tranche] = pdLevel;
@@ -642,8 +634,8 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
     ) internal {
         require(index != 0, "invalid order");
         require(pdLevel <= bestBids[conversionID][tranche], "invalid pd level");
-        OrderQueue storage orderQueue = bids[conversionID][tranche][pdLevel];
-        Order storage order = orderQueue.list[index];
+        LibOrderBook.OrderQueue storage orderQueue = bids[conversionID][tranche][pdLevel];
+        LibOrderBook.Order storage order = orderQueue.list[index];
         require(order.makerAddress == makerAddress, "invalid maker address");
 
         uint256 fillable = order.fillable;
@@ -656,7 +648,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
             index,
             fillable
         );
-        _removeOrder(orderQueue, index);
+        orderQueue.remove(index);
 
         // Update bestBid
         if (bestBids[conversionID][tranche] == pdLevel) {
@@ -689,8 +681,8 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         // TODO revert("invalid base asset");
         require(index != 0, "invalid order");
         require(pdLevel >= bestAsks[conversionID][tranche], "invalid pd level");
-        OrderQueue storage orderQueue = asks[conversionID][tranche][pdLevel];
-        Order storage order = orderQueue.list[index];
+        LibOrderBook.OrderQueue storage orderQueue = asks[conversionID][tranche][pdLevel];
+        LibOrderBook.Order storage order = orderQueue.list[index];
         require(order.makerAddress == makerAddress, "invalid maker address");
 
         uint256 fillable = order.fillable;
@@ -703,7 +695,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
             index,
             fillable
         );
-        _removeOrder(orderQueue, index);
+        orderQueue.remove(index);
 
         // Update bestAsk
         if (bestAsks[conversionID][tranche] == pdLevel) {
@@ -756,12 +748,12 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         for (uint256 i = bestAsks[conversionID][tranche]; i <= maxPDLevel; i++) {
             context.pd = i.mul(PD_TICK).add(MIN_PD);
             context.price = context.pd.multiplyDecimal(estimatedNav);
-            OrderQueue storage orderQueue = asks[conversionID][tranche][i];
+            LibOrderBook.OrderQueue storage orderQueue = asks[conversionID][tranche][i];
 
             uint256 index = orderQueue.head;
             while (index != 0 && totalTrade.frozenQuote < quoteAmount) {
                 PendingBuyTrade memory currentTrade;
-                Order storage order = orderQueue.list[index];
+                LibOrderBook.Order storage order = orderQueue.list[index];
 
                 // If the order initiator is no longer qualified for maker,
                 // we would only skip the order since the linked-list-based order queue
@@ -807,7 +799,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
                 context.lastMatchedOrderIndex = index;
                 context.lastMatchedAmount = currentTrade.reservedBase;
                 if (order.fillable == 0) {
-                    index = _removeOrder(orderQueue, index);
+                    index = orderQueue.remove(index);
                 } else {
                     index = order.next;
                 }
@@ -871,12 +863,12 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         for (uint256 i = bestBids[conversionID][tranche] + 1; i > minPDLevel; i--) {
             context.pd = (i - 1).mul(PD_TICK).add(MIN_PD);
             context.price = context.pd.multiplyDecimal(estimatedNav);
-            OrderQueue storage orderQueue = bids[conversionID][tranche][i - 1];
+            LibOrderBook.OrderQueue storage orderQueue = bids[conversionID][tranche][i - 1];
 
             uint256 index = orderQueue.head;
             while (index != 0 && totalTrade.frozenBase < baseAmount) {
                 PendingSellTrade memory currentTrade;
-                Order storage order = orderQueue.list[index];
+                LibOrderBook.Order storage order = orderQueue.list[index];
 
                 // If the order initiator is no longer qualified for maker,
                 // we would only skip the order since the linked-list-based order queue
@@ -923,7 +915,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
                 context.lastMatchedOrderIndex = index;
                 context.lastMatchedAmount = currentTrade.reservedQuote;
                 if (order.fillable == 0) {
-                    index = _removeOrder(orderQueue, index);
+                    index = orderQueue.remove(index);
                 } else {
                     index = order.next;
                 }
@@ -1050,8 +1042,8 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
     function _fillAskOrder(
         uint256 tranche,
         uint256 periodID,
-        OrderQueue storage orderQueue,
-        Order storage order,
+        LibOrderBook.OrderQueue storage orderQueue,
+        LibOrderBook.Order storage order,
         PendingBuyTrade memory buyTrade
     ) internal {
         address makerAddress = order.makerAddress;
@@ -1076,8 +1068,8 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
     function _fillBidOrder(
         uint256 tranche,
         uint256 periodID,
-        OrderQueue storage orderQueue,
-        Order storage order,
+        LibOrderBook.OrderQueue storage orderQueue,
+        LibOrderBook.Order storage order,
         PendingSellTrade memory sellTrade
     ) internal {
         order.fillable = order.fillable.sub(sellTrade.reservedQuote);
