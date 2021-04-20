@@ -11,7 +11,7 @@ contract ChessController {
     function getFundRelativeWeight(
         address, /*account*/
         uint256 /*timestamp*/
-    ) external view returns (uint256 relativeWeight) {
+    ) external pure returns (uint256 relativeWeight) {
         relativeWeight = 1e18;
     }
 }
