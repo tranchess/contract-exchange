@@ -3,27 +3,27 @@ pragma solidity >=0.6.10 <0.8.0;
 
 import "@openzeppelin/contracts/math/SafeMath.sol";
 
+struct Order {
+    uint256 prev; // Previous order in the list
+    uint256 next; // Next order in the list
+    address makerAddress; // Maker address of the order
+    uint256 amount; // Total amount of assets
+    uint256 conversionID; // Conversion ID when the order was placed
+    uint256 fillable; // Currently fillable amount of assets
+}
+
+struct OrderQueue {
+    mapping(uint256 => Order) list; // Mapping of order index => order struct
+    uint256 totalAmount; // Total order depth of the order queue
+    uint256 head; // Head of the linked list
+    uint256 tail; // Tail of the linekd list
+}
+
 /// @title Tranchess's Exchange Order Queue Contract
 /// @notice Order queue struct and implementation using doubly linked list
 /// @author Tranchess
 library LibOrderBook {
     using SafeMath for uint256;
-
-    struct Order {
-        uint256 prev; // Previous order in the list
-        uint256 next; // Next order in the list
-        address makerAddress; // Maker address of the order
-        uint256 amount; // Total amount of assets
-        uint256 conversionID; // Conversion ID when the order was placed
-        uint256 fillable; // Currently fillable amount of assets
-    }
-
-    struct OrderQueue {
-        mapping(uint256 => Order) list; // Mapping of order index => order struct
-        uint256 totalAmount; // Total order depth of the order queue
-        uint256 head; // Head of the linked list
-        uint256 tail; // Tail of the linekd list
-    }
 
     /// @notice Append a new order to the queue
     /// @param queue Order queue
