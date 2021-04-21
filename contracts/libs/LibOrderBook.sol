@@ -6,7 +6,7 @@ import "@openzeppelin/contracts/math/SafeMath.sol";
 struct Order {
     uint256 prev; // Previous order in the list
     uint256 next; // Next order in the list
-    address makerAddress; // Maker address of the order
+    address maker; // Maker address of the order
     uint256 amount; // Total amount of assets
     uint256 conversionID; // Conversion ID when the order was placed
     uint256 fillable; // Currently fillable amount of assets
@@ -40,13 +40,13 @@ library LibOrderBook {
 
     /// @notice Append a new order to the queue
     /// @param queue Order queue
-    /// @param makerAddress Maker address
+    /// @param maker Maker address
     /// @param amount Amount to place in the order
     /// @param conversionID Current conversion ID
     /// @return Index of the order in the order queue
     function append(
         OrderQueue storage queue,
-        address makerAddress,
+        address maker,
         uint256 amount,
         uint256 conversionID
     ) internal returns (uint256) {
@@ -56,7 +56,7 @@ library LibOrderBook {
         queue.list[index] = Order({
             prev: tail,
             next: 0,
-            makerAddress: makerAddress,
+            maker: maker,
             amount: amount,
             conversionID: conversionID,
             fillable: amount

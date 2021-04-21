@@ -230,7 +230,7 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
         )
     {
         Order storage order = bids[conversionID][tranche][pdLevel].list[index];
-        maker = order.makerAddress;
+        maker = order.maker;
         amount = order.amount;
         fillable = order.fillable;
     }
@@ -250,7 +250,7 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
         )
     {
         Order storage order = asks[conversionID][tranche][pdLevel].list[index];
-        maker = order.makerAddress;
+        maker = order.maker;
         amount = order.amount;
         fillable = order.fillable;
     }
@@ -619,13 +619,13 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
     /// @dev Cancel a bid order
     /// @param conversionID Order's conversion ID
     /// @param tranche Tranche of the order's base asset
-    /// @param makerAddress Order's maker address
+    /// @param maker Order's maker address
     /// @param pdLevel Order's premium-discount level
     /// @param index Order's index
     function _cancelBid(
         uint256 conversionID,
         uint256 tranche,
-        address makerAddress,
+        address maker,
         uint256 pdLevel,
         uint256 index
     ) internal {
@@ -633,18 +633,10 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
         require(pdLevel <= bestBids[conversionID][tranche], "invalid pd level");
         OrderQueue storage orderQueue = bids[conversionID][tranche][pdLevel];
         Order storage order = orderQueue.list[index];
-        require(order.makerAddress == makerAddress, "invalid maker address");
+        require(order.maker == maker, "invalid maker address");
 
         uint256 fillable = order.fillable;
-        emit BidOrderCanceled(
-            makerAddress,
-            tranche,
-            pdLevel,
-            order.amount,
-            conversionID,
-            index,
-            fillable
-        );
+        emit BidOrderCanceled(maker, tranche, pdLevel, order.amount, conversionID, index, fillable);
         orderQueue.cancel(index);
 
         // Update bestBid
@@ -659,19 +651,19 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
             bestBids[conversionID][tranche] = bestBid;
         }
 
-        IERC20(quoteAssetAddress).transfer(makerAddress, fillable);
+        IERC20(quoteAssetAddress).transfer(maker, fillable);
     }
 
     /// @dev Cancel an ask order
     /// @param conversionID Order's conversion ID
     /// @param tranche Tranche of the order's base asset address
-    /// @param makerAddress Order's maker address
+    /// @param maker Order's maker address
     /// @param pdLevel Order's premium-discount level
     /// @param index Order's index
     function _cancelAsk(
         uint256 conversionID,
         uint256 tranche,
-        address makerAddress,
+        address maker,
         uint256 pdLevel,
         uint256 index
     ) internal {
@@ -680,18 +672,10 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
         require(pdLevel >= bestAsks[conversionID][tranche], "invalid pd level");
         OrderQueue storage orderQueue = asks[conversionID][tranche][pdLevel];
         Order storage order = orderQueue.list[index];
-        require(order.makerAddress == makerAddress, "invalid maker address");
+        require(order.maker == maker, "invalid maker address");
 
         uint256 fillable = order.fillable;
-        emit AskOrderCanceled(
-            makerAddress,
-            tranche,
-            pdLevel,
-            order.amount,
-            conversionID,
-            index,
-            fillable
-        );
+        emit AskOrderCanceled(maker, tranche, pdLevel, order.amount, conversionID, index, fillable);
         orderQueue.cancel(index);
 
         // Update bestAsk
@@ -707,24 +691,24 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
         }
 
         if (tranche == TRANCHE_P) {
-            _convertAndUnlock(makerAddress, fillable, 0, 0, conversionID);
+            _convertAndUnlock(maker, fillable, 0, 0, conversionID);
         } else if (tranche == TRANCHE_A) {
-            _convertAndUnlock(makerAddress, 0, fillable, 0, conversionID);
+            _convertAndUnlock(maker, 0, fillable, 0, conversionID);
         } else if (tranche == TRANCHE_B) {
-            _convertAndUnlock(makerAddress, 0, 0, fillable, conversionID);
+            _convertAndUnlock(maker, 0, 0, fillable, conversionID);
         }
     }
 
     /// @dev Buy share
     /// @param conversionID Current conversion ID. Revert if conversion is triggered simultaneously
-    /// @param takerAddress Taker address
+    /// @param taker Taker address
     /// @param tranche Tranche of the base asset
     /// @param maxPDLevel Maximal premium-discount level accepted
     /// @param estimatedNav Estimated net asset value of the base asset
     /// @param quoteAmount Amount of quote assets willing to trade
     function _buy(
         uint256 conversionID,
-        address takerAddress,
+        address taker,
         uint256 tranche,
         uint256 maxPDLevel,
         uint256 estimatedNav,
@@ -754,7 +738,7 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
                 // If the order initiator is no longer qualified for maker,
                 // we would only skip the order since the linked-list-based order queue
                 // would never traverse the order again
-                if (!isMaker(order.makerAddress)) {
+                if (!isMaker(order.maker)) {
                     orderIndex = order.next;
                     continue;
                 }
@@ -791,11 +775,11 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
                     currentTrade.effectiveQuote
                 );
                 totalTrade.reservedBase = totalTrade.reservedBase.add(currentTrade.reservedBase);
-                pendingTrades[order.makerAddress][tranche][epoch].makerSell.add(currentTrade);
+                pendingTrades[order.maker][tranche][epoch].makerSell.add(currentTrade);
 
                 // There is no need to convert for maker; the fact that the order could
                 // be filled here indicates that the maker is in the latest version
-                _tradeLocked(tranche, order.makerAddress, currentTrade.reservedBase);
+                _tradeLocked(tranche, order.maker, currentTrade.reservedBase);
 
                 uint256 orderNewFillable = order.fillable.sub(currentTrade.reservedBase);
                 if (orderNewFillable > 0) {
@@ -824,7 +808,7 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
         if (orderIndex != 0) {
             // Matching ends by partially filling the order at `orderIndex`.
             emit BuyTrade(
-                takerAddress,
+                taker,
                 tranche,
                 totalTrade.frozenQuote,
                 conversionID,
@@ -836,7 +820,7 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
             // Matching ends by completely filling all orders at and below the specified
             // premium-discount level `maxPDLevel`.
             emit BuyTrade(
-                takerAddress,
+                taker,
                 tranche,
                 totalTrade.frozenQuote,
                 conversionID,
@@ -857,20 +841,20 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
             totalTrade.frozenQuote > 0,
             "Nothing can be bought at the given premium-discount level"
         );
-        IERC20(quoteAssetAddress).transferFrom(takerAddress, address(this), totalTrade.frozenQuote);
-        pendingTrades[takerAddress][tranche][epoch].takerBuy.add(totalTrade);
+        IERC20(quoteAssetAddress).transferFrom(taker, address(this), totalTrade.frozenQuote);
+        pendingTrades[taker][tranche][epoch].takerBuy.add(totalTrade);
     }
 
     /// @dev Sell share
     /// @param conversionID Current conversion ID. Revert if conversion is triggered simultaneously
-    /// @param takerAddress Taker address
+    /// @param taker Taker address
     /// @param tranche Tranche of the base asset
     /// @param minPDLevel Minimal premium-discount level accepted
     /// @param estimatedNav Estimated net asset value of the base asset
     /// @param baseAmount Amount of base assets willing to trade
     function _sell(
         uint256 conversionID,
-        address takerAddress,
+        address taker,
         uint256 tranche,
         uint256 minPDLevel,
         uint256 estimatedNav,
@@ -900,7 +884,7 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
                 // If the order initiator is no longer qualified for maker,
                 // we would only skip the order since the linked-list-based order queue
                 // would never traverse the order again
-                if (!isMaker(order.makerAddress)) {
+                if (!isMaker(order.maker)) {
                     orderIndex = order.next;
                     continue;
                 }
@@ -934,7 +918,7 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
                 totalTrade.frozenBase = totalTrade.frozenBase.add(currentTrade.frozenBase);
                 totalTrade.effectiveBase = totalTrade.effectiveBase.add(currentTrade.effectiveBase);
                 totalTrade.reservedQuote = totalTrade.reservedQuote.add(currentTrade.reservedQuote);
-                pendingTrades[order.makerAddress][tranche][epoch].makerBuy.add(currentTrade);
+                pendingTrades[order.maker][tranche][epoch].makerBuy.add(currentTrade);
 
                 uint256 orderNewFillable = order.fillable.sub(currentTrade.reservedQuote);
                 if (orderNewFillable > 0) {
@@ -963,7 +947,7 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
         if (orderIndex != 0) {
             // Matching ends by partially filling the order at `orderIndex`.
             emit SellTrade(
-                takerAddress,
+                taker,
                 tranche,
                 totalTrade.frozenBase,
                 conversionID,
@@ -975,7 +959,7 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
             // Matching ends by completely filling all orders at and above the specified
             // premium-discount level `minPDLevel`.
             emit SellTrade(
-                takerAddress,
+                taker,
                 tranche,
                 totalTrade.frozenBase,
                 conversionID,
@@ -996,8 +980,8 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
             totalTrade.frozenBase > 0,
             "Nothing can be sold at the given premium-discount level"
         );
-        _tradeAvailable(tranche, takerAddress, totalTrade.frozenBase);
-        pendingTrades[takerAddress][tranche][epoch].takerSell.add(totalTrade);
+        _tradeAvailable(tranche, taker, totalTrade.frozenBase);
+        pendingTrades[taker][tranche][epoch].takerSell.add(totalTrade);
     }
 
     /// @dev Settle both buy and sell trades of a specified epoch for takers
