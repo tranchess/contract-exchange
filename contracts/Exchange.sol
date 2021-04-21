@@ -535,12 +535,12 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
     }
 
     /// @notice Settle trades of a specified epoch for makers
-    /// @param periodID A specified epoch's end timestamp
+    /// @param epoch A specified epoch's end timestamp
     /// @return sharesP Share P amount added to msg.sender's available balance
     /// @return sharesA Share A amount added to msg.sender's available balance
     /// @return sharesB Share B amount added to msg.sender's available balance
     /// @return quoteAmount Quote asset amount transfered to msg.sender
-    function settleMaker(uint256 periodID)
+    function settleMaker(uint256 epoch)
         external
         returns (
             uint256 sharesP,
@@ -550,16 +550,16 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
         )
     {
         (uint256 estimatedNavP, uint256 estimatedNavA, uint256 estimatedNavB) =
-            estimateNavs(periodID + EPOCH);
+            estimateNavs(epoch + EPOCH);
 
         uint256 quoteAmountP;
         uint256 quoteAmountA;
         uint256 quoteAmountB;
-        (sharesP, quoteAmountP) = _settleMaker(msg.sender, TRANCHE_P, estimatedNavP, periodID);
-        (sharesA, quoteAmountA) = _settleMaker(msg.sender, TRANCHE_A, estimatedNavA, periodID);
-        (sharesB, quoteAmountB) = _settleMaker(msg.sender, TRANCHE_B, estimatedNavB, periodID);
+        (sharesP, quoteAmountP) = _settleMaker(msg.sender, TRANCHE_P, estimatedNavP, epoch);
+        (sharesA, quoteAmountA) = _settleMaker(msg.sender, TRANCHE_A, estimatedNavA, epoch);
+        (sharesB, quoteAmountB) = _settleMaker(msg.sender, TRANCHE_B, estimatedNavB, epoch);
 
-        uint256 conversionID = mostRecentConversionPendingTrades[periodID];
+        uint256 conversionID = mostRecentConversionPendingTrades[epoch];
         (sharesP, sharesA, sharesB) = _convertAndClearTrade(
             msg.sender,
             sharesP,
@@ -572,16 +572,16 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
             IERC20(quoteAssetAddress).transfer(msg.sender, quoteAmount);
         }
 
-        emit MakerSettled(msg.sender, periodID);
+        emit MakerSettled(msg.sender, epoch);
     }
 
     /// @notice Settle trades of a specified epoch for takers
-    /// @param periodID A specified epoch's end timestamp
+    /// @param epoch A specified epoch's end timestamp
     /// @return sharesP Share P amount added to msg.sender's available balance
     /// @return sharesA Share A amount added to msg.sender's available balance
     /// @return sharesB Share B amount added to msg.sender's available balance
     /// @return quoteAmount Quote asset amount transfered to msg.sender
-    function settleTaker(uint256 periodID)
+    function settleTaker(uint256 epoch)
         external
         returns (
             uint256 sharesP,
@@ -591,16 +591,16 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
         )
     {
         (uint256 estimatedNavP, uint256 estimatedNavA, uint256 estimatedNavB) =
-            estimateNavs(periodID + EPOCH);
+            estimateNavs(epoch + EPOCH);
 
         uint256 quoteAmountP;
         uint256 quoteAmountA;
         uint256 quoteAmountB;
-        (sharesP, quoteAmountP) = _settleTaker(msg.sender, TRANCHE_P, estimatedNavP, periodID);
-        (sharesA, quoteAmountA) = _settleTaker(msg.sender, TRANCHE_A, estimatedNavA, periodID);
-        (sharesB, quoteAmountB) = _settleTaker(msg.sender, TRANCHE_B, estimatedNavB, periodID);
+        (sharesP, quoteAmountP) = _settleTaker(msg.sender, TRANCHE_P, estimatedNavP, epoch);
+        (sharesA, quoteAmountA) = _settleTaker(msg.sender, TRANCHE_A, estimatedNavA, epoch);
+        (sharesB, quoteAmountB) = _settleTaker(msg.sender, TRANCHE_B, estimatedNavB, epoch);
 
-        uint256 conversionID = mostRecentConversionPendingTrades[periodID];
+        uint256 conversionID = mostRecentConversionPendingTrades[epoch];
         (sharesP, sharesA, sharesB) = _convertAndClearTrade(
             msg.sender,
             sharesP,
@@ -613,7 +613,7 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
             IERC20(quoteAssetAddress).transfer(msg.sender, quoteAmount);
         }
 
-        emit TakerSettled(msg.sender, periodID);
+        emit TakerSettled(msg.sender, epoch);
     }
 
     /// @dev Cancel a bid order
@@ -734,11 +734,11 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
         require(conversionID == fund.getConversionSize(), "Invalid conversion ID");
 
         PendingBuyTrade memory totalTrade;
-        uint256 periodID = endOfEpoch(block.timestamp);
+        uint256 epoch = endOfEpoch(block.timestamp);
 
         // Record epoch ID => conversion ID in the first trasaction in the epoch
-        if (mostRecentConversionPendingTrades[periodID] != conversionID) {
-            mostRecentConversionPendingTrades[periodID] = conversionID;
+        if (mostRecentConversionPendingTrades[epoch] != conversionID) {
+            mostRecentConversionPendingTrades[epoch] = conversionID;
         }
 
         PendingBuyTrade memory currentTrade;
@@ -791,7 +791,7 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
                     currentTrade.effectiveQuote
                 );
                 totalTrade.reservedBase = totalTrade.reservedBase.add(currentTrade.reservedBase);
-                pendingTrades[order.makerAddress][tranche][periodID].makerSell.add(currentTrade);
+                pendingTrades[order.makerAddress][tranche][epoch].makerSell.add(currentTrade);
 
                 // There is no need to convert for maker; the fact that the order could
                 // be filled here indicates that the maker is in the latest version
@@ -858,7 +858,7 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
             "Nothing can be bought at the given premium-discount level"
         );
         IERC20(quoteAssetAddress).transferFrom(takerAddress, address(this), totalTrade.frozenQuote);
-        pendingTrades[takerAddress][tranche][periodID].takerBuy.add(totalTrade);
+        pendingTrades[takerAddress][tranche][epoch].takerBuy.add(totalTrade);
     }
 
     /// @dev Sell share
@@ -880,11 +880,11 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
         require(conversionID == fund.getConversionSize(), "Invalid conversion ID");
 
         PendingSellTrade memory totalTrade;
-        uint256 periodID = endOfEpoch(block.timestamp);
+        uint256 epoch = endOfEpoch(block.timestamp);
 
         // Record epoch ID => conversion ID in the first trasaction in the epoch
-        if (mostRecentConversionPendingTrades[periodID] != conversionID) {
-            mostRecentConversionPendingTrades[periodID] = conversionID;
+        if (mostRecentConversionPendingTrades[epoch] != conversionID) {
+            mostRecentConversionPendingTrades[epoch] = conversionID;
         }
 
         PendingSellTrade memory currentTrade;
@@ -934,7 +934,7 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
                 totalTrade.frozenBase = totalTrade.frozenBase.add(currentTrade.frozenBase);
                 totalTrade.effectiveBase = totalTrade.effectiveBase.add(currentTrade.effectiveBase);
                 totalTrade.reservedQuote = totalTrade.reservedQuote.add(currentTrade.reservedQuote);
-                pendingTrades[order.makerAddress][tranche][periodID].makerBuy.add(currentTrade);
+                pendingTrades[order.makerAddress][tranche][epoch].makerBuy.add(currentTrade);
 
                 uint256 orderNewFillable = order.fillable.sub(currentTrade.reservedQuote);
                 if (orderNewFillable > 0) {
@@ -997,21 +997,21 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
             "Nothing can be sold at the given premium-discount level"
         );
         _tradeAvailable(tranche, takerAddress, totalTrade.frozenBase);
-        pendingTrades[takerAddress][tranche][periodID].takerSell.add(totalTrade);
+        pendingTrades[takerAddress][tranche][epoch].takerSell.add(totalTrade);
     }
 
     /// @dev Settle both buy and sell trades of a specified epoch for takers
     /// @param account Taker address
     /// @param tranche Tranche of the base asset
     /// @param estimatedNav Estimated net asset value for the base asset
-    /// @param periodID The epoch's end timestamp
+    /// @param epoch The epoch's end timestamp
     function _settleTaker(
         address account,
         uint256 tranche,
         uint256 estimatedNav,
-        uint256 periodID
+        uint256 epoch
     ) internal returns (uint256 baseAmount, uint256 quoteAmount) {
-        PendingTrade storage pendingTrade = pendingTrades[account][tranche][periodID];
+        PendingTrade storage pendingTrade = pendingTrades[account][tranche][epoch];
 
         // Settle buy trade
         PendingBuyTrade memory takerBuy = pendingTrade.takerBuy;
@@ -1046,14 +1046,14 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
     /// @param account Maker address
     /// @param tranche Tranche of the base asset
     /// @param estimatedNav Estimated net asset value for the base asset
-    /// @param periodID The epoch's end timestamp
+    /// @param epoch The epoch's end timestamp
     function _settleMaker(
         address account,
         uint256 tranche,
         uint256 estimatedNav,
-        uint256 periodID
+        uint256 epoch
     ) internal returns (uint256 baseAmount, uint256 quoteAmount) {
-        PendingTrade storage pendingTrade = pendingTrades[account][tranche][periodID];
+        PendingTrade storage pendingTrade = pendingTrades[account][tranche][epoch];
 
         // Settle buy trade
         PendingSellTrade memory makerBuy = pendingTrade.makerBuy;
