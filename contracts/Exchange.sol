@@ -32,17 +32,6 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
         uint256 index; // Order queue index
     }
 
-    /// @notice Avoid `stack too deep`
-    struct Context {
-        uint256 pd;
-        uint256 price;
-        uint256 fillableBase;
-        uint256 fillableQuote;
-        uint256 lastMatchedPDLevel;
-        uint256 lastMatchedOrderIndex;
-        uint256 lastMatchedAmount;
-    }
-
     /// @notice A maker bid order is placed.
     /// @param maker Account placing the order
     /// @param tranche Tranche of the share to buy
