@@ -92,18 +92,17 @@ library LibOrderQueue {
             Order storage order = queue.list[index];
             uint256 prev = order.prev;
             uint256 next = order.next;
-            if (prev == 0 && next == 0) {
-                // This is the only order in the queue.
-                queue.head = 0;
-                queue.tail = 0;
-            } else if (prev == 0) {
+            if (prev == 0) {
                 // This is the first but not the only order.
                 queue.head = next;
-                queue.list[next].prev = 0;
-            } else if (next == 0) {
+            } else {
+                queue.list[prev].next = next;
+            }
+            if (next == 0) {
                 // This is the last but not the only order.
-                queue.list[prev].next = 0;
                 queue.tail = prev;
+            } else {
+                queue.list[next].prev = prev;
             }
         }
         delete queue.list[index];
