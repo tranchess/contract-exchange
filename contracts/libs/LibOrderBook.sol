@@ -76,7 +76,8 @@ library LibOrderBook {
     /// @param queue Order queue
     /// @param index Index of the order to be canceled
     function cancel(OrderQueue storage queue, uint256 index) internal {
-        if (index >= queue.head) {
+        uint256 oldHead = queue.head;
+        if (index >= oldHead && oldHead > 0) {
             // The order is still active.
             Order storage order = queue.list[index];
             uint256 prev = order.prev;
