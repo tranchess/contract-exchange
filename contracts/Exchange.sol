@@ -6,17 +6,25 @@ import "./utils/SafeDecimalMath.sol";
 import "@openzeppelin/contracts/proxy/Initializable.sol";
 
 import {Order, OrderQueue, LibOrderBook} from "./libs/LibOrderBook.sol";
+import {
+    PendingBuyTrade,
+    PendingSellTrade,
+    PendingTrade,
+    LibPendingBuyTrade,
+    LibPendingSellTrade
+} from "./libs/LibPendingTrade.sol";
 
 import "./ExchangeRoles.sol";
-import "./ExchangeTrade.sol";
 import "./Staking.sol";
 
 /// @title Tranchess's Exchange Contract
 /// @notice A decentralized exchange to match premium-discount orders and clear trades
 /// @author Tranchess
-contract Exchange is ExchangeRoles, ExchangeTrade, Staking, Initializable {
+contract Exchange is ExchangeRoles, Staking, Initializable {
     using SafeDecimalMath for uint256;
     using LibOrderBook for OrderQueue;
+    using LibPendingBuyTrade for PendingBuyTrade;
+    using LibPendingSellTrade for PendingSellTrade;
 
     /// @notice Identifier of a pending order
     struct OrderIdentifier {
@@ -794,14 +802,7 @@ contract Exchange is ExchangeRoles, ExchangeTrade, Staking, Initializable {
                     currentTrade.effectiveQuote
                 );
                 totalTrade.reservedBase = totalTrade.reservedBase.add(currentTrade.reservedBase);
-
-                PendingBuyTrade storage makerSell =
-                    pendingTrades[order.makerAddress][tranche][periodID].makerSell;
-                makerSell.frozenQuote = makerSell.frozenQuote.add(currentTrade.frozenQuote);
-                makerSell.effectiveQuote = makerSell.effectiveQuote.add(
-                    currentTrade.effectiveQuote
-                );
-                makerSell.reservedBase = makerSell.reservedBase.add(currentTrade.reservedBase);
+                pendingTrades[order.makerAddress][tranche][periodID].makerSell.add(currentTrade);
 
                 // There is no need to convert for maker; the fact that the order could
                 // be filled here indicates that the maker is in the latest version
@@ -844,7 +845,7 @@ contract Exchange is ExchangeRoles, ExchangeTrade, Staking, Initializable {
             );
         } else {
             // Matching ends by completely filling all orders at and below the specified
-            // premium-discount level.
+            // premium-discount level `maxPDLevel`.
             emit BuyTrade(
                 takerAddress,
                 tranche,
@@ -868,10 +869,7 @@ contract Exchange is ExchangeRoles, ExchangeTrade, Staking, Initializable {
             "Nothing can be bought at the given premium-discount level"
         );
         IERC20(quoteAssetAddress).transferFrom(takerAddress, address(this), totalTrade.frozenQuote);
-        pendingTrades[takerAddress][tranche][periodID].takerBuy = _addBuyTrade(
-            pendingTrades[takerAddress][tranche][periodID].takerBuy,
-            totalTrade
-        );
+        pendingTrades[takerAddress][tranche][periodID].takerBuy.add(totalTrade);
     }
 
     /// @dev Sell share
@@ -947,12 +945,7 @@ contract Exchange is ExchangeRoles, ExchangeTrade, Staking, Initializable {
                 totalTrade.frozenBase = totalTrade.frozenBase.add(currentTrade.frozenBase);
                 totalTrade.effectiveBase = totalTrade.effectiveBase.add(currentTrade.effectiveBase);
                 totalTrade.reservedQuote = totalTrade.reservedQuote.add(currentTrade.reservedQuote);
-
-                PendingSellTrade storage makerBuy =
-                    pendingTrades[order.makerAddress][tranche][periodID].makerBuy;
-                makerBuy.frozenBase = makerBuy.frozenBase.add(currentTrade.frozenBase);
-                makerBuy.effectiveBase = makerBuy.effectiveBase.add(currentTrade.effectiveBase);
-                makerBuy.reservedQuote = makerBuy.reservedQuote.add(currentTrade.reservedQuote);
+                pendingTrades[order.makerAddress][tranche][periodID].makerBuy.add(currentTrade);
 
                 uint256 orderNewFillable = order.fillable.sub(currentTrade.reservedQuote);
                 if (orderNewFillable > 0) {
@@ -991,7 +984,7 @@ contract Exchange is ExchangeRoles, ExchangeTrade, Staking, Initializable {
             );
         } else {
             // Matching ends by completely filling all orders at and above the specified
-            // premium-discount level.
+            // premium-discount level `minPDLevel`.
             emit SellTrade(
                 takerAddress,
                 tranche,
@@ -1015,10 +1008,7 @@ contract Exchange is ExchangeRoles, ExchangeTrade, Staking, Initializable {
             "Nothing can be sold at the given premium-discount level"
         );
         _tradeAvailable(tranche, takerAddress, totalTrade.frozenBase);
-        pendingTrades[takerAddress][tranche][periodID].takerSell = _addSellTrade(
-            pendingTrades[takerAddress][tranche][periodID].takerSell,
-            totalTrade
-        );
+        pendingTrades[takerAddress][tranche][periodID].takerSell.add(totalTrade);
     }
 
     /// @dev Settle both buy and sell trades of a specified epoch for takers
@@ -1103,26 +1093,6 @@ contract Exchange is ExchangeRoles, ExchangeTrade, Staking, Initializable {
             // Delete by zeroing it out
             delete pendingTrade.makerSell;
         }
-    }
-
-    /// @dev Fill a bid order
-    /// @param tranche Tranche of the base asset
-    /// @param periodID The epoch's end timestamp
-    /// @param orderQueue The order queue of the specified conversion ID, base asset and pd level
-    /// @param order Order to fill
-    /// @param sellTrade Sell trade result of this particular fill
-    function _fillBidOrder(
-        uint256 tranche,
-        uint256 periodID,
-        OrderQueue storage orderQueue,
-        Order storage order,
-        PendingSellTrade memory sellTrade
-    ) internal {
-        order.fillable = order.fillable.sub(sellTrade.reservedQuote);
-        pendingTrades[order.makerAddress][tranche][periodID].makerBuy = _addSellTrade(
-            pendingTrades[order.makerAddress][tranche][periodID].makerBuy,
-            sellTrade
-        );
     }
 
     /// @dev Calculate the result of a pending buy trade with a given NAV
