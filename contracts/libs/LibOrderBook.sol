@@ -3,13 +3,23 @@ pragma solidity >=0.6.10 <0.8.0;
 
 import "@openzeppelin/contracts/math/SafeMath.sol";
 
+/// @notice A maker order
+/// @param prev Index of the previous order at the same premium-discount level,
+///             or zero if this is the first one
+/// @param next Index of the next order at the same premium-discount level,
+///             or zero if this is the last one
+/// @param maker Account placing this order
+/// @param amount Original amount of the order, which is amount of quote asset for a bid order,
+///               or amount of base asset for an ask order
+/// @param conversionID Conversion ID when the order is placed
+/// @param fillable Currently fillable amount
 struct Order {
-    uint256 prev; // Previous order in the list
-    uint256 next; // Next order in the list
-    address maker; // Maker address of the order
-    uint256 amount; // Total amount of assets
-    uint256 conversionID; // Conversion ID when the order was placed
-    uint256 fillable; // Currently fillable amount of assets
+    uint256 prev;
+    uint256 next;
+    address maker;
+    uint256 amount;
+    uint256 conversionID;
+    uint256 fillable;
 }
 
 /// @notice A queue of orders with the same premium-discount level.
