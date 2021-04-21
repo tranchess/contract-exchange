@@ -217,7 +217,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
     /// @param pdLevel Premium-discount level
     /// @param quoteAmount Quote asset amount
     /// @param conversionID Current conversion ID. Revert if conversion is triggered simultaneously
-    /// @param clientOrderID Self-assigned order ID
+    /// @param clientOrderID Optional self-assigned order ID. Index starting with 1
     function placeBid(
         uint256 tranche,
         uint256 pdLevel,
@@ -241,10 +241,17 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         if (bestBids[conversionID][tranche] < pdLevel) {
             bestBids[conversionID][tranche] = pdLevel;
         }
-        identifiers[conversionID][tranche][msg.sender][clientOrderID] = OrderIdentifier({
-            pdLevel: pdLevel,
-            index: index
-        });
+
+        if (clientOrderID != 0) {
+            require(
+                identifiers[conversionID][tranche][msg.sender][clientOrderID].index == 0,
+                "Client ID has already assigned an order"
+            );
+            identifiers[conversionID][tranche][msg.sender][clientOrderID] = OrderIdentifier({
+                pdLevel: pdLevel,
+                index: index
+            });
+        }
 
         emit BidOrderPlaced(
             msg.sender,
@@ -262,7 +269,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
     /// @param pdLevel Premium-discount level
     /// @param baseAmount Base asset amount
     /// @param conversionID Current conversion ID. Revert if conversion is triggered simultaneously
-    /// @param clientOrderID Self-assigned order ID
+    /// @param clientOrderID Optional self-assigned order ID. Index starting with 1
     function placeAsk(
         uint256 tranche,
         uint256 pdLevel,
@@ -290,10 +297,16 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
             bestAsks[conversionID][tranche] = pdLevel;
         }
 
-        identifiers[conversionID][tranche][msg.sender][clientOrderID] = OrderIdentifier({
-            pdLevel: pdLevel,
-            index: index
-        });
+        if (clientOrderID != 0) {
+            require(
+                identifiers[conversionID][tranche][msg.sender][clientOrderID].index == 0,
+                "Client ID has already assigned an order"
+            );
+            identifiers[conversionID][tranche][msg.sender][clientOrderID] = OrderIdentifier({
+                pdLevel: pdLevel,
+                index: index
+            });
+        }
 
         emit AskOrderPlaced(
             msg.sender,
