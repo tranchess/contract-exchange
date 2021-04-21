@@ -5,7 +5,7 @@ pragma experimental ABIEncoderV2;
 import "./utils/SafeDecimalMath.sol";
 import "@openzeppelin/contracts/proxy/Initializable.sol";
 
-import {Order, OrderQueue, LibOrderBook} from "./libs/LibOrderBook.sol";
+import {Order, OrderQueue, LibOrderQueue} from "./libs/LibOrderQueue.sol";
 import {
     PendingBuyTrade,
     PendingSellTrade,
@@ -22,7 +22,7 @@ import "./Staking.sol";
 /// @author Tranchess
 contract Exchange is ExchangeRoles, Staking, Initializable {
     using SafeDecimalMath for uint256;
-    using LibOrderBook for OrderQueue;
+    using LibOrderQueue for OrderQueue;
     using LibPendingBuyTrade for PendingBuyTrade;
     using LibPendingSellTrade for PendingSellTrade;
 

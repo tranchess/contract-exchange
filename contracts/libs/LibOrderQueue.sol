@@ -41,7 +41,7 @@ struct OrderQueue {
 /// @title Tranchess's Exchange Order Queue Contract
 /// @notice Order queue struct and implementation using doubly linked list
 /// @author Tranchess
-library LibOrderBook {
+library LibOrderQueue {
     using SafeMath for uint256;
 
     function isEmpty(OrderQueue storage queue) internal view returns (bool) {
