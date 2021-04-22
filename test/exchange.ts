@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { Contract, Wallet } from "ethers";
+import { BigNumber, Contract, Wallet } from "ethers";
 import type { Fixture, MockContract, MockProvider } from "ethereum-waffle";
 import { waffle, ethers } from "hardhat";
 const { loadFixture } = waffle;
@@ -7,6 +7,7 @@ const { parseEther, parseUnits } = ethers.utils;
 const parseUsdc = (value: string) => parseUnits(value, 6);
 import { deployMockForName } from "./mock";
 
+const MAX_UINT = BigNumber.from("2").pow(256).sub(1);
 const EPOCH = 1800; // 30 min
 const USDC_TO_ETHER = parseUnits("1", 12);
 const MAKER_RESERVE_BPS = 11000; // 110%
@@ -512,8 +513,9 @@ describe("Exchange", function () {
                     .withArgs(addr1, TRANCHE_P, matchedUsdc, 0, 40, 1, matchedShares);
             });
 
-            it("Should keep the best bid level unchanged", async function () {
-                expect(await exchange.bestBids(0, TRANCHE_P)).to.equal(40);
+            it("Should keep the best ask level unchanged", async function () {
+                await buyTxBuilder();
+                expect(await exchange.bestAsks(0, TRANCHE_P)).to.equal(40);
             });
         });
 
@@ -565,11 +567,12 @@ describe("Exchange", function () {
             it("Should emit event", async function () {
                 await expect(buyTxBuilder())
                     .to.emit(exchange, "BuyTrade")
-                    .withArgs(addr1, TRANCHE_P, matchedUsdc, 0, 40, 1, matchedShares);
+                    .withArgs(addr1, TRANCHE_P, matchedUsdc, 0, 41, MAX_UINT, 0);
             });
 
-            it("May update the best bid level", async function () {
-                expect(await exchange.bestBids(0, TRANCHE_P)).to.lte(44);
+            it("Should update the best ask level", async function () {
+                await buyTxBuilder();
+                expect(await exchange.bestAsks(0, TRANCHE_P)).to.equal(44);
             });
         });
 
@@ -661,8 +664,9 @@ describe("Exchange", function () {
                     .withArgs(addr1, TRANCHE_P, matchedUsdc, 0, 48, 1, matchedSharesAt2);
             });
 
-            it("May update the best bid level", async function () {
-                expect(await exchange.bestBids(0, TRANCHE_P)).to.lte(48);
+            it("Should update the best ask level", async function () {
+                await buyTxBuilder();
+                expect(await exchange.bestAsks(0, TRANCHE_P)).to.equal(48);
             });
         });
 
@@ -762,8 +766,9 @@ describe("Exchange", function () {
                     .withArgs(addr1, TRANCHE_P, matchedShares, 0, 40, 1, matchedUsdc);
             });
 
-            it("Should keep the best ask level unchanged", async function () {
-                expect(await exchange.bestAsks(0, TRANCHE_P)).to.equal(40);
+            it("Should keep the best bid level unchanged", async function () {
+                await sellTxBuilder();
+                expect(await exchange.bestBids(0, TRANCHE_P)).to.equal(40);
             });
         });
 
@@ -814,11 +819,12 @@ describe("Exchange", function () {
             it("Should emit event", async function () {
                 await expect(sellTxBuilder())
                     .to.emit(exchange, "SellTrade")
-                    .withArgs(addr1, TRANCHE_P, matchedShares, 0, 40, 1, matchedUsdc);
+                    .withArgs(addr1, TRANCHE_P, matchedShares, 0, 39, MAX_UINT, 0);
             });
 
-            it("May update the best ask level", async function () {
-                expect(await exchange.bestAsks(0, TRANCHE_P)).to.gte(36);
+            it("Should update the best bid level", async function () {
+                await sellTxBuilder();
+                expect(await exchange.bestBids(0, TRANCHE_P)).to.equal(36);
             });
         });
 
@@ -914,8 +920,9 @@ describe("Exchange", function () {
                     .withArgs(addr1, TRANCHE_P, matchedShares, 0, 32, 1, matchedUsdcAtN2);
             });
 
-            it("May update the best ask level", async function () {
-                expect(await exchange.bestAsks(0, TRANCHE_P)).to.gte(32);
+            it("Should update the best bid level", async function () {
+                await sellTxBuilder();
+                expect(await exchange.bestBids(0, TRANCHE_P)).to.equal(32);
             });
         });
 
