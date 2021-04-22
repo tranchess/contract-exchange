@@ -167,6 +167,16 @@ describe("LibOrderBook", function () {
             expect((await orderQueue.getOrder(1)).next).to.equal(3);
             expect((await orderQueue.getOrder(3)).prev).to.equal(1);
         });
+
+        it("Should not reuse old order index after the old tail is canceled", async function () {
+            await orderQueue.cancel(3);
+            await orderQueue.append(addr1, 400, 9);
+            expect(await orderQueue.lastReturn()).to.equal(4);
+            const queue = await orderQueue.queue();
+            expect(queue.tail).to.equal(4);
+            expect(queue.counter).to.equal(4);
+            expect((await orderQueue.getOrder(4)).prev).to.equal(2);
+        });
     });
 
     describe("fill()", function () {
