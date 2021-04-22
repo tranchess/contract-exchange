@@ -140,8 +140,37 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
         uint256 lastMatchedQuoteAmount
     );
 
-    event MakerSettled(address indexed account, uint256 epoch);
-    event TakerSettled(address indexed account, uint256 epoch);
+    /// @notice Settlement of pending trades of maker orders.
+    /// @param account Account placing the related maker orders
+    /// @param epoch Epoch of the settled trades
+    /// @param amountP Amount of Share P added to the account's available balance
+    /// @param amountA Amount of Share A added to the account's available balance
+    /// @param amountB Amount of Share B added to the account's available balance
+    /// @param quoteAmount Amount of quote asset transfered to the account
+    event MakerSettled(
+        address indexed account,
+        uint256 epoch,
+        uint256 amountP,
+        uint256 amountA,
+        uint256 amountB,
+        uint256 quoteAmount
+    );
+
+    /// @notice Settlement of pending trades of taker orders.
+    /// @param account Account placing the related taker orders
+    /// @param epoch Epoch of the settled trades
+    /// @param amountP Amount of Share P added to the account's available balance
+    /// @param amountA Amount of Share A added to the account's available balance
+    /// @param amountB Amount of Share B added to the account's available balance
+    /// @param quoteAmount Amount of quote asset transfered to the account
+    event TakerSettled(
+        address indexed account,
+        uint256 epoch,
+        uint256 amountP,
+        uint256 amountA,
+        uint256 amountB,
+        uint256 quoteAmount
+    );
 
     uint256 private constant EPOCH = 30 minutes; // An exchange epoch is 30 minutes long
 
@@ -572,7 +601,7 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
             IERC20(quoteAssetAddress).transfer(msg.sender, quoteAmount);
         }
 
-        emit MakerSettled(msg.sender, epoch);
+        emit MakerSettled(msg.sender, epoch, sharesP, sharesA, sharesB, quoteAmount);
     }
 
     /// @notice Settle trades of a specified epoch for takers
@@ -613,7 +642,7 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
             IERC20(quoteAssetAddress).transfer(msg.sender, quoteAmount);
         }
 
-        emit TakerSettled(msg.sender, epoch);
+        emit TakerSettled(msg.sender, epoch, sharesP, sharesA, sharesB, quoteAmount);
     }
 
     /// @dev Cancel a bid order
