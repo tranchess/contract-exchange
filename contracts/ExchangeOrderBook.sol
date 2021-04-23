@@ -38,9 +38,9 @@ contract ExchangeOrderBook {
         uint256 amount,
         uint256 conversionID
     ) internal returns (uint256 index) {
-        queue.totalAmount += amount;
+        queue.totalAmount = queue.totalAmount.add(amount);
 
-        index = queue.tail + 1;
+        index = queue.tail.add(1);
         queue.list[index] = Order({
             prev: queue.tail,
             next: 0,
@@ -65,7 +65,7 @@ contract ExchangeOrderBook {
     /// @param index Index of the order in order queue
     function _removeOrder(OrderQueue storage queue, uint256 index) internal {
         Order memory order = queue.list[index];
-        queue.totalAmount -= order.fillable;
+        queue.totalAmount = queue.totalAmount.sub(order.fillable);
 
         if (order.prev == 0) {
             queue.head = order.next;
