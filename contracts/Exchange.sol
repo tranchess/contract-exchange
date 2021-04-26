@@ -217,7 +217,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
     /// @param pdLevel Premium-discount level
     /// @param quoteAmount Quote asset amount
     /// @param conversionID Current conversion ID. Revert if conversion is triggered simultaneously
-    /// @param clientOrderID Self-assigned order ID
+    /// @param clientOrderID Optional self-assigned order ID. Index starting with 1
     function placeBid(
         uint256 tranche,
         uint256 pdLevel,
@@ -241,10 +241,17 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         if (bestBids[conversionID][tranche] < pdLevel) {
             bestBids[conversionID][tranche] = pdLevel;
         }
-        identifiers[conversionID][tranche][msg.sender][clientOrderID] = OrderIdentifier({
-            pdLevel: pdLevel,
-            index: index
-        });
+
+        if (clientOrderID != 0) {
+            require(
+                identifiers[conversionID][tranche][msg.sender][clientOrderID].index == 0,
+                "Client ID has already assigned an order"
+            );
+            identifiers[conversionID][tranche][msg.sender][clientOrderID] = OrderIdentifier({
+                pdLevel: pdLevel,
+                index: index
+            });
+        }
 
         emit BidOrderPlaced(
             msg.sender,
@@ -262,7 +269,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
     /// @param pdLevel Premium-discount level
     /// @param baseAmount Base asset amount
     /// @param conversionID Current conversion ID. Revert if conversion is triggered simultaneously
-    /// @param clientOrderID Self-assigned order ID
+    /// @param clientOrderID Optional self-assigned order ID. Index starting with 1
     function placeAsk(
         uint256 tranche,
         uint256 pdLevel,
@@ -290,10 +297,16 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
             bestAsks[conversionID][tranche] = pdLevel;
         }
 
-        identifiers[conversionID][tranche][msg.sender][clientOrderID] = OrderIdentifier({
-            pdLevel: pdLevel,
-            index: index
-        });
+        if (clientOrderID != 0) {
+            require(
+                identifiers[conversionID][tranche][msg.sender][clientOrderID].index == 0,
+                "Client ID has already assigned an order"
+            );
+            identifiers[conversionID][tranche][msg.sender][clientOrderID] = OrderIdentifier({
+                pdLevel: pdLevel,
+                index: index
+            });
+        }
 
         emit AskOrderPlaced(
             msg.sender,
@@ -385,7 +398,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         uint256 maxPDLevel,
         uint256 quoteAmount
     ) external {
-        (uint256 estimatedNav, , ) = estimateNavs(block.timestamp - 2 * EPOCH);
+        (uint256 estimatedNav, , ) = estimateNavs(endOfEpoch(block.timestamp) - 2 * EPOCH);
         _buy(conversionID, msg.sender, TRANCHE_P, maxPDLevel, estimatedNav, quoteAmount);
     }
 
@@ -398,7 +411,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         uint256 maxPDLevel,
         uint256 quoteAmount
     ) external {
-        (, uint256 estimatedNav, ) = estimateNavs(block.timestamp - 2 * EPOCH);
+        (, uint256 estimatedNav, ) = estimateNavs(endOfEpoch(block.timestamp) - 2 * EPOCH);
         _buy(conversionID, msg.sender, TRANCHE_A, maxPDLevel, estimatedNav, quoteAmount);
     }
 
@@ -411,7 +424,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         uint256 maxPDLevel,
         uint256 quoteAmount
     ) external {
-        (, , uint256 estimatedNav) = estimateNavs(block.timestamp - 2 * EPOCH);
+        (, , uint256 estimatedNav) = estimateNavs(endOfEpoch(block.timestamp) - 2 * EPOCH);
         _buy(conversionID, msg.sender, TRANCHE_B, maxPDLevel, estimatedNav, quoteAmount);
     }
 
@@ -424,7 +437,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         uint256 minPDLevel,
         uint256 baseAmount
     ) external {
-        (uint256 estimatedNav, , ) = estimateNavs(block.timestamp - 2 * EPOCH);
+        (uint256 estimatedNav, , ) = estimateNavs(endOfEpoch(block.timestamp) - 2 * EPOCH);
         _sell(conversionID, msg.sender, TRANCHE_P, minPDLevel, estimatedNav, baseAmount);
     }
 
@@ -437,7 +450,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         uint256 minPDLevel,
         uint256 baseAmount
     ) external {
-        (, uint256 estimatedNav, ) = estimateNavs(block.timestamp - 2 * EPOCH);
+        (, uint256 estimatedNav, ) = estimateNavs(endOfEpoch(block.timestamp) - 2 * EPOCH);
         _sell(conversionID, msg.sender, TRANCHE_A, minPDLevel, estimatedNav, baseAmount);
     }
 
@@ -450,7 +463,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         uint256 minPDLevel,
         uint256 baseAmount
     ) external {
-        (, , uint256 estimatedNav) = estimateNavs(block.timestamp - 2 * EPOCH);
+        (, , uint256 estimatedNav) = estimateNavs(endOfEpoch(block.timestamp) - 2 * EPOCH);
         _sell(conversionID, msg.sender, TRANCHE_B, minPDLevel, estimatedNav, baseAmount);
     }
 
@@ -486,20 +499,6 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         _clear(periodID, sharesP, sharesA, sharesB, quoteAmountP + quoteAmountA + quoteAmountB);
     }
 
-    /// @dev Place an ask order
-    /// @param tranche Tranche of the base asset
-    /// @param makerAddress Maker address
-    /// @param pdLevel Premium-discount level
-    /// @param baseAmount Base asset amount
-    /// @param conversionID Current conversion ID. Revert if conversion is triggered simultaneously
-    function _placeAsk(
-        uint256 tranche,
-        address makerAddress,
-        uint256 pdLevel,
-        uint256 baseAmount,
-        uint256 conversionID
-    ) internal returns (uint256 orderIndex) {}
-
     /// @dev Cancel a bid order
     /// @param conversionID Order's conversion ID
     /// @param tranche Tranche of the order's base asset
@@ -527,6 +526,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
             for (uint256 i = pdLevel + 1; i > 0; i--) {
                 if (bids[conversionID][tranche][i - 1].totalAmount != 0) {
                     bestBid = i - 1;
+                    break;
                 }
             }
             bestBids[conversionID][tranche] = bestBid;
@@ -564,6 +564,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
             for (uint256 i = pdLevel; i < PD_LEVEL_COUNT; i++) {
                 if (asks[conversionID][tranche][i].totalAmount != 0) {
                     bestAsk = i;
+                    break;
                 }
             }
             bestAsks[conversionID][tranche] = bestAsk;
@@ -594,6 +595,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         uint256 quoteAmount
     ) internal {
         require(maxPDLevel < PD_LEVEL_COUNT, "Invalid premium-discount level");
+        require(conversionID == fund.getConversionSize(), "Invalid conversion ID");
 
         PendingBuyTrade memory totalTrade;
         uint256 periodID = endOfEpoch(block.timestamp);
@@ -693,6 +695,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         uint256 baseAmount
     ) internal {
         require(minPDLevel < PD_LEVEL_COUNT, "Invalid premium-discount level");
+        require(conversionID == fund.getConversionSize(), "Invalid conversion ID");
 
         PendingSellTrade memory totalTrade;
         uint256 periodID = endOfEpoch(block.timestamp);
