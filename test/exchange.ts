@@ -232,28 +232,31 @@ describe("Exchange", function () {
     describe("placeBid()", function () {
         it("Should check maker expiration", async function () {
             await expect(
-                exchange.connect(user3).placeBid(TRANCHE_P, 0, MIN_BID_AMOUNT, 0, 0)
+                exchange.connect(user3).placeBid(TRANCHE_P, 1, MIN_BID_AMOUNT, 0, 0)
             ).to.be.revertedWith("Only maker");
             await advanceBlockAtTime(startEpoch + EPOCH * 1500);
-            await expect(exchange.placeBid(TRANCHE_P, 0, MIN_BID_AMOUNT, 0, 0)).to.be.revertedWith(
+            await expect(exchange.placeBid(TRANCHE_P, 1, MIN_BID_AMOUNT, 0, 0)).to.be.revertedWith(
                 "Only maker"
             );
         });
 
         it("Should check min amount", async function () {
             await expect(
-                exchange.placeBid(TRANCHE_P, 0, MIN_BID_AMOUNT.sub(1), 0, 0)
+                exchange.placeBid(TRANCHE_P, 1, MIN_BID_AMOUNT.sub(1), 0, 0)
             ).to.be.revertedWith("Quote amount too low");
         });
 
         it("Should check pd level", async function () {
-            await expect(exchange.placeBid(TRANCHE_P, 81, MIN_BID_AMOUNT, 0, 0)).to.be.revertedWith(
+            await expect(exchange.placeBid(TRANCHE_P, 0, MIN_BID_AMOUNT, 0, 0)).to.be.revertedWith(
+                "Invalid premium-discount level"
+            );
+            await expect(exchange.placeBid(TRANCHE_P, 82, MIN_BID_AMOUNT, 0, 0)).to.be.revertedWith(
                 "Invalid premium-discount level"
             );
         });
 
         it("Should check conversion ID", async function () {
-            await expect(exchange.placeBid(TRANCHE_P, 0, MIN_BID_AMOUNT, 1, 0)).to.be.revertedWith(
+            await expect(exchange.placeBid(TRANCHE_P, 1, MIN_BID_AMOUNT, 1, 0)).to.be.revertedWith(
                 "Invalid conversion ID"
             );
         });
@@ -261,7 +264,7 @@ describe("Exchange", function () {
         it("Should transfer USDC", async function () {
             for (const { tranche } of tranche_list) {
                 await expect(() =>
-                    exchange.placeBid(tranche, 0, parseUsdc("100"), 0, 0)
+                    exchange.placeBid(tranche, 1, parseUsdc("100"), 0, 0)
                 ).to.changeTokenBalances(
                     usdc,
                     [user1, exchange],
@@ -272,25 +275,25 @@ describe("Exchange", function () {
 
         it("Should update best bid premium-discount level", async function () {
             for (const { tranche } of tranche_list) {
-                await exchange.placeBid(tranche, 40, parseUsdc("100"), 0, 0);
-                expect(await exchange.bestBids(0, tranche)).to.equal(40);
-                await exchange.placeBid(tranche, 60, parseUsdc("100"), 0, 0);
-                expect(await exchange.bestBids(0, tranche)).to.equal(60);
-                await exchange.placeBid(tranche, 50, parseUsdc("100"), 0, 0);
-                expect(await exchange.bestBids(0, tranche)).to.equal(60);
+                await exchange.placeBid(tranche, 41, parseUsdc("100"), 0, 0);
+                expect(await exchange.bestBids(0, tranche)).to.equal(41);
+                await exchange.placeBid(tranche, 61, parseUsdc("100"), 0, 0);
+                expect(await exchange.bestBids(0, tranche)).to.equal(61);
+                await exchange.placeBid(tranche, 51, parseUsdc("100"), 0, 0);
+                expect(await exchange.bestBids(0, tranche)).to.equal(61);
             }
         });
 
         it("Should append order to order queue", async function () {
             for (const { tranche } of tranche_list) {
-                await exchange.placeBid(tranche, 40, parseUsdc("100"), 0, 0);
-                const order1 = await exchange.getBidOrder(0, tranche, 40, 1);
+                await exchange.placeBid(tranche, 41, parseUsdc("100"), 0, 0);
+                const order1 = await exchange.getBidOrder(0, tranche, 41, 1);
                 expect(order1.maker).to.equal(addr1);
                 expect(order1.amount).to.equal(parseUsdc("100"));
                 expect(order1.fillable).to.equal(parseUsdc("100"));
 
-                await exchange.connect(user2).placeBid(tranche, 40, parseUsdc("200"), 0, 0);
-                const order2 = await exchange.getBidOrder(0, tranche, 40, 2);
+                await exchange.connect(user2).placeBid(tranche, 41, parseUsdc("200"), 0, 0);
+                const order2 = await exchange.getBidOrder(0, tranche, 41, 2);
                 expect(order2.maker).to.equal(addr2);
                 expect(order2.amount).to.equal(parseUsdc("200"));
                 expect(order2.fillable).to.equal(parseUsdc("200"));
@@ -301,72 +304,75 @@ describe("Exchange", function () {
     describe("placeAsk()", function () {
         it("Should check maker expiration", async function () {
             await expect(
-                exchange.connect(user3).placeAsk(TRANCHE_P, 0, MIN_ASK_AMOUNT, 0, 0)
+                exchange.connect(user3).placeAsk(TRANCHE_P, 81, MIN_ASK_AMOUNT, 0, 0)
             ).to.be.revertedWith("Only maker");
             await advanceBlockAtTime(startEpoch + EPOCH * 1000);
-            await expect(exchange.placeAsk(TRANCHE_P, 0, MIN_ASK_AMOUNT, 0, 0)).to.be.revertedWith(
+            await expect(exchange.placeAsk(TRANCHE_P, 81, MIN_ASK_AMOUNT, 0, 0)).to.be.revertedWith(
                 "Only maker"
             );
         });
 
         it("Should check min amount", async function () {
             await expect(
-                exchange.placeAsk(TRANCHE_P, 0, MIN_ASK_AMOUNT.sub(1), 0, 0)
+                exchange.placeAsk(TRANCHE_P, 81, MIN_ASK_AMOUNT.sub(1), 0, 0)
             ).to.be.revertedWith("Base amount too low");
         });
 
         it("Should check pd level", async function () {
-            await expect(exchange.placeAsk(TRANCHE_P, 81, MIN_ASK_AMOUNT, 0, 0)).to.be.revertedWith(
+            await expect(exchange.placeAsk(TRANCHE_P, 0, MIN_ASK_AMOUNT, 0, 0)).to.be.revertedWith(
+                "Invalid premium-discount level"
+            );
+            await expect(exchange.placeAsk(TRANCHE_P, 82, MIN_ASK_AMOUNT, 0, 0)).to.be.revertedWith(
                 "Invalid premium-discount level"
             );
         });
 
         it("Should check conversion ID", async function () {
-            await expect(exchange.placeAsk(TRANCHE_P, 0, MIN_ASK_AMOUNT, 1, 0)).to.be.revertedWith(
+            await expect(exchange.placeAsk(TRANCHE_P, 81, MIN_ASK_AMOUNT, 1, 0)).to.be.revertedWith(
                 "Invalid conversion ID"
             );
         });
 
         it("Should lock share tokens", async function () {
             for (const { tranche } of tranche_list) {
-                await exchange.placeAsk(tranche, 0, parseEther("100"), 0, 0);
+                await exchange.placeAsk(tranche, 81, parseEther("100"), 0, 0);
                 expect(await exchange.lockedBalanceOf(tranche, addr1)).to.equal(parseEther("100"));
             }
         });
 
         it("Should revert if balance is not enough", async function () {
-            await expect(exchange.placeAsk(TRANCHE_P, 0, USER1_P.add(1), 0, 0)).to.be.revertedWith(
+            await expect(exchange.placeAsk(TRANCHE_P, 81, USER1_P.add(1), 0, 0)).to.be.revertedWith(
                 "Insufficient balance to lock"
             );
-            await expect(exchange.placeAsk(TRANCHE_A, 0, USER1_A.add(1), 0, 0)).to.be.revertedWith(
+            await expect(exchange.placeAsk(TRANCHE_A, 81, USER1_A.add(1), 0, 0)).to.be.revertedWith(
                 "Insufficient balance to lock"
             );
-            await expect(exchange.placeAsk(TRANCHE_B, 0, USER1_B.add(1), 0, 0)).to.be.revertedWith(
+            await expect(exchange.placeAsk(TRANCHE_B, 81, USER1_B.add(1), 0, 0)).to.be.revertedWith(
                 "Insufficient balance to lock"
             );
         });
 
         it("Should update best ask premium-discount level", async function () {
             for (const { tranche } of tranche_list) {
-                await exchange.placeAsk(tranche, 40, parseEther("1"), 0, 0);
-                expect(await exchange.bestAsks(0, tranche)).to.equal(40);
-                await exchange.placeAsk(tranche, 20, parseEther("1"), 0, 0);
-                expect(await exchange.bestAsks(0, tranche)).to.equal(20);
-                await exchange.placeAsk(tranche, 30, parseEther("1"), 0, 0);
-                expect(await exchange.bestAsks(0, tranche)).to.equal(20);
+                await exchange.placeAsk(tranche, 41, parseEther("1"), 0, 0);
+                expect(await exchange.bestAsks(0, tranche)).to.equal(41);
+                await exchange.placeAsk(tranche, 21, parseEther("1"), 0, 0);
+                expect(await exchange.bestAsks(0, tranche)).to.equal(21);
+                await exchange.placeAsk(tranche, 31, parseEther("1"), 0, 0);
+                expect(await exchange.bestAsks(0, tranche)).to.equal(21);
             }
         });
 
         it("Should append order to order queue", async function () {
             for (const { tranche } of tranche_list) {
-                await exchange.placeAsk(tranche, 40, parseEther("1"), 0, 0);
-                const order1 = await exchange.getAskOrder(0, tranche, 40, 1);
+                await exchange.placeAsk(tranche, 41, parseEther("1"), 0, 0);
+                const order1 = await exchange.getAskOrder(0, tranche, 41, 1);
                 expect(order1.maker).to.equal(addr1);
                 expect(order1.amount).to.equal(parseEther("1"));
                 expect(order1.fillable).to.equal(parseEther("1"));
 
-                await exchange.connect(user2).placeAsk(tranche, 40, parseEther("2"), 0, 0);
-                const order2 = await exchange.getAskOrder(0, tranche, 40, 2);
+                await exchange.connect(user2).placeAsk(tranche, 41, parseEther("2"), 0, 0);
+                const order2 = await exchange.getAskOrder(0, tranche, 41, 2);
                 expect(order2.maker).to.equal(addr2);
                 expect(order2.amount).to.equal(parseEther("2"));
                 expect(order2.fillable).to.equal(parseEther("2"));
@@ -405,16 +411,16 @@ describe("Exchange", function () {
         //  0%  100(user2)
         // -1%   50(user3)  20(user2)  30(user2)
         // -2%   80(user3)
-        await f.exchange.connect(u3).placeAsk(TRANCHE_P, 48, ASK_1_PD_2, 0, 0);
-        await f.exchange.connect(u2).placeAsk(TRANCHE_P, 44, ASK_1_PD_1, 0, 0);
-        await f.exchange.connect(u3).placeAsk(TRANCHE_P, 44, ASK_2_PD_1, 0, 0);
-        await f.exchange.connect(u2).placeAsk(TRANCHE_P, 44, ASK_3_PD_1, 0, 0);
-        await f.exchange.connect(u2).placeAsk(TRANCHE_P, 40, ASK_1_PD_0, 0, 0);
-        await f.exchange.connect(u2).placeBid(TRANCHE_P, 40, BID_1_PD_0, 0, 0);
-        await f.exchange.connect(u3).placeBid(TRANCHE_P, 36, BID_1_PD_N1, 0, 0);
-        await f.exchange.connect(u2).placeBid(TRANCHE_P, 36, BID_2_PD_N1, 0, 0);
-        await f.exchange.connect(u2).placeBid(TRANCHE_P, 36, BID_3_PD_N1, 0, 0);
-        await f.exchange.connect(u3).placeBid(TRANCHE_P, 32, BID_1_PD_N2, 0, 0);
+        await f.exchange.connect(u3).placeAsk(TRANCHE_P, 49, ASK_1_PD_2, 0, 0);
+        await f.exchange.connect(u2).placeAsk(TRANCHE_P, 45, ASK_1_PD_1, 0, 0);
+        await f.exchange.connect(u3).placeAsk(TRANCHE_P, 45, ASK_2_PD_1, 0, 0);
+        await f.exchange.connect(u2).placeAsk(TRANCHE_P, 45, ASK_3_PD_1, 0, 0);
+        await f.exchange.connect(u2).placeAsk(TRANCHE_P, 41, ASK_1_PD_0, 0, 0);
+        await f.exchange.connect(u2).placeBid(TRANCHE_P, 41, BID_1_PD_0, 0, 0);
+        await f.exchange.connect(u3).placeBid(TRANCHE_P, 37, BID_1_PD_N1, 0, 0);
+        await f.exchange.connect(u2).placeBid(TRANCHE_P, 37, BID_2_PD_N1, 0, 0);
+        await f.exchange.connect(u2).placeBid(TRANCHE_P, 37, BID_3_PD_N1, 0, 0);
+        await f.exchange.connect(u3).placeBid(TRANCHE_P, 33, BID_1_PD_N2, 0, 0);
 
         return f;
     }
@@ -435,12 +441,12 @@ describe("Exchange", function () {
 
         it("Should revert if exchange is inactive", async function () {
             await fund.mock.isExchangeActive.returns(false);
-            await expect(exchange.buyP(0, 40, 1)).to.be.revertedWith("Exchange is inactive");
+            await expect(exchange.buyP(0, 41, 1)).to.be.revertedWith("Exchange is inactive");
         });
 
         it("Should revert if price is not available", async function () {
             await twapOracle.mock.getTwap.returns(parseEther("0"));
-            await expect(exchange.buyP(0, 40, 1)).to.be.revertedWith("Price is not available");
+            await expect(exchange.buyP(0, 41, 1)).to.be.revertedWith("Price is not available");
         });
 
         it("Should check pd level", async function () {
@@ -449,7 +455,10 @@ describe("Exchange", function () {
                 parseEther("1"),
                 parseEther("1")
             );
-            await expect(exchange.buyP(0, 81, 1)).to.be.revertedWith(
+            await expect(exchange.buyP(0, 0, 1)).to.be.revertedWith(
+                "Invalid premium-discount level"
+            );
+            await expect(exchange.buyP(0, 82, 1)).to.be.revertedWith(
                 "Invalid premium-discount level"
             );
         });
@@ -460,7 +469,7 @@ describe("Exchange", function () {
                 parseEther("1"),
                 parseEther("1")
             );
-            await expect(exchange.buyP(0, 39, 1)).to.be.revertedWith(
+            await expect(exchange.buyP(0, 40, 1)).to.be.revertedWith(
                 "Nothing can be bought at the given premium-discount level"
             );
         });
@@ -477,7 +486,7 @@ describe("Exchange", function () {
                 .div(10000)
                 .mul(parseEther("1"))
                 .div(estimatedNav);
-            const buyTxBuilder = () => exchange.buyP(0, 48, matchedUsdc);
+            const buyTxBuilder = () => exchange.buyP(0, 49, matchedUsdc);
 
             beforeEach(async function () {
                 await fund.mock.extrapolateNav.returns(estimatedNav, 0, 0);
@@ -493,7 +502,7 @@ describe("Exchange", function () {
 
             it("Should update the maker order", async function () {
                 await buyTxBuilder();
-                const order = await exchange.getAskOrder(0, TRANCHE_P, 40, 1);
+                const order = await exchange.getAskOrder(0, TRANCHE_P, 41, 1);
                 expect(order.fillable).to.equal(ASK_1_PD_0.sub(matchedShares));
             });
 
@@ -510,12 +519,12 @@ describe("Exchange", function () {
             it("Should emit event", async function () {
                 await expect(buyTxBuilder())
                     .to.emit(exchange, "BuyTrade")
-                    .withArgs(addr1, TRANCHE_P, matchedUsdc, 0, 40, 1, matchedShares);
+                    .withArgs(addr1, TRANCHE_P, matchedUsdc, 0, 41, 1, matchedShares);
             });
 
             it("Should keep the best ask level unchanged", async function () {
                 await buyTxBuilder();
-                expect(await exchange.bestAsks(0, TRANCHE_P)).to.equal(40);
+                expect(await exchange.bestAsks(0, TRANCHE_P)).to.equal(41);
             });
         });
 
@@ -529,7 +538,7 @@ describe("Exchange", function () {
                 .mul(10000)
                 .div(MAKER_RESERVE_BPS);
             const matchedShares = ASK_1_PD_0;
-            const buyTxBuilder = () => exchange.buyP(0, 41, ASK_1_PD_0.div(USDC_TO_ETHER));
+            const buyTxBuilder = () => exchange.buyP(0, 42, ASK_1_PD_0.div(USDC_TO_ETHER));
 
             beforeEach(async function () {
                 await fund.mock.extrapolateNav.returns(estimatedNav, 0, 0);
@@ -545,10 +554,10 @@ describe("Exchange", function () {
 
             it("Should delete the maker order", async function () {
                 await buyTxBuilder();
-                const queue = await exchange.asks(0, TRANCHE_P, 40);
+                const queue = await exchange.asks(0, TRANCHE_P, 41);
                 expect(queue.head).to.equal(0);
                 expect(queue.tail).to.equal(0);
-                const order = await exchange.getAskOrder(0, TRANCHE_P, 40, 1);
+                const order = await exchange.getAskOrder(0, TRANCHE_P, 41, 1);
                 expect(order.maker).to.equal(ethers.constants.AddressZero);
                 expect(order.amount).to.equal(0);
                 expect(order.fillable).to.equal(0);
@@ -567,12 +576,12 @@ describe("Exchange", function () {
             it("Should emit event", async function () {
                 await expect(buyTxBuilder())
                     .to.emit(exchange, "BuyTrade")
-                    .withArgs(addr1, TRANCHE_P, matchedUsdc, 0, 41, MAX_UINT, 0);
+                    .withArgs(addr1, TRANCHE_P, matchedUsdc, 0, 43, 0, 0);
             });
 
             it("Should update the best ask level", async function () {
                 await buyTxBuilder();
-                expect(await exchange.bestAsks(0, TRANCHE_P)).to.equal(44);
+                expect(await exchange.bestAsks(0, TRANCHE_P)).to.equal(45);
             });
         });
 
@@ -606,7 +615,7 @@ describe("Exchange", function () {
                 .div(10000)
                 .mul(100)
                 .div(102);
-            const buyTxBuilder = () => exchange.buyP(0, 48, matchedUsdc);
+            const buyTxBuilder = () => exchange.buyP(0, 49, matchedUsdc);
 
             beforeEach(async function () {
                 await fund.mock.extrapolateNav.returns(parseEther("1"), 0, 0);
@@ -622,16 +631,16 @@ describe("Exchange", function () {
 
             it("Should update maker orders", async function () {
                 await buyTxBuilder();
-                const queueAt0 = await exchange.asks(0, TRANCHE_P, 40);
+                const queueAt0 = await exchange.asks(0, TRANCHE_P, 41);
                 expect(queueAt0.head).to.equal(0);
                 expect(queueAt0.tail).to.equal(0);
-                const queueAt1 = await exchange.asks(0, TRANCHE_P, 44);
+                const queueAt1 = await exchange.asks(0, TRANCHE_P, 45);
                 expect(queueAt1.head).to.equal(0);
                 expect(queueAt1.tail).to.equal(0);
-                const queueAt2 = await exchange.asks(0, TRANCHE_P, 48);
+                const queueAt2 = await exchange.asks(0, TRANCHE_P, 49);
                 expect(queueAt2.head).to.equal(1);
                 expect(queueAt2.tail).to.equal(1);
-                const order = await exchange.getAskOrder(0, TRANCHE_P, 48, 1);
+                const order = await exchange.getAskOrder(0, TRANCHE_P, 49, 1);
                 expect(order.fillable).to.equal(ASK_1_PD_2.sub(matchedSharesAt2));
             });
 
@@ -661,12 +670,12 @@ describe("Exchange", function () {
             it("Should emit event", async function () {
                 await expect(buyTxBuilder())
                     .to.emit(exchange, "BuyTrade")
-                    .withArgs(addr1, TRANCHE_P, matchedUsdc, 0, 48, 1, matchedSharesAt2);
+                    .withArgs(addr1, TRANCHE_P, matchedUsdc, 0, 49, 1, matchedSharesAt2);
             });
 
             it("Should update the best ask level", async function () {
                 await buyTxBuilder();
-                expect(await exchange.bestAsks(0, TRANCHE_P)).to.equal(48);
+                expect(await exchange.bestAsks(0, TRANCHE_P)).to.equal(49);
             });
         });
 
@@ -689,12 +698,12 @@ describe("Exchange", function () {
 
         it("Should revert if exchange is inactive", async function () {
             await fund.mock.isExchangeActive.returns(false);
-            await expect(exchange.sellP(0, 40, 1)).to.be.revertedWith("Exchange is inactive");
+            await expect(exchange.sellP(0, 41, 1)).to.be.revertedWith("Exchange is inactive");
         });
 
         it("Should revert if price is not available", async function () {
             await twapOracle.mock.getTwap.returns(parseEther("0"));
-            await expect(exchange.sellP(0, 40, 1)).to.be.revertedWith("Price is not available");
+            await expect(exchange.sellP(0, 41, 1)).to.be.revertedWith("Price is not available");
         });
 
         it("Should check pd level", async function () {
@@ -703,7 +712,10 @@ describe("Exchange", function () {
                 parseEther("1"),
                 parseEther("1")
             );
-            await expect(exchange.sellP(0, 81, 1)).to.be.revertedWith(
+            await expect(exchange.sellP(0, 0, 1)).to.be.revertedWith(
+                "Invalid premium-discount level"
+            );
+            await expect(exchange.sellP(0, 82, 1)).to.be.revertedWith(
                 "Invalid premium-discount level"
             );
         });
@@ -714,7 +726,7 @@ describe("Exchange", function () {
                 parseEther("1"),
                 parseEther("1")
             );
-            await expect(exchange.sellP(0, 41, 1)).to.be.revertedWith(
+            await expect(exchange.sellP(0, 42, 1)).to.be.revertedWith(
                 "Nothing can be sold at the given premium-discount level"
             );
         });
@@ -731,7 +743,7 @@ describe("Exchange", function () {
                 .mul(estimatedNav)
                 .div(parseEther("1"))
                 .div(USDC_TO_ETHER);
-            const sellTxBuilder = () => exchange.sellP(0, 32, matchedShares);
+            const sellTxBuilder = () => exchange.sellP(0, 33, matchedShares);
 
             beforeEach(async function () {
                 await fund.mock.extrapolateNav.returns(estimatedNav, 0, 0);
@@ -746,7 +758,7 @@ describe("Exchange", function () {
 
             it("Should update the maker order", async function () {
                 await sellTxBuilder();
-                const order = await exchange.getBidOrder(0, TRANCHE_P, 40, 1);
+                const order = await exchange.getBidOrder(0, TRANCHE_P, 41, 1);
                 expect(order.fillable).to.equal(BID_1_PD_0.sub(matchedUsdc));
             });
 
@@ -763,12 +775,12 @@ describe("Exchange", function () {
             it("Should emit event", async function () {
                 await expect(sellTxBuilder())
                     .to.emit(exchange, "SellTrade")
-                    .withArgs(addr1, TRANCHE_P, matchedShares, 0, 40, 1, matchedUsdc);
+                    .withArgs(addr1, TRANCHE_P, matchedShares, 0, 41, 1, matchedUsdc);
             });
 
             it("Should keep the best bid level unchanged", async function () {
                 await sellTxBuilder();
-                expect(await exchange.bestBids(0, TRANCHE_P)).to.equal(40);
+                expect(await exchange.bestBids(0, TRANCHE_P)).to.equal(41);
             });
         });
 
@@ -782,7 +794,7 @@ describe("Exchange", function () {
                 .mul(10000)
                 .div(MAKER_RESERVE_BPS);
             const matchedUsdc = BID_1_PD_0;
-            const sellTxBuilder = () => exchange.sellP(0, 39, BID_1_PD_0.mul(USDC_TO_ETHER));
+            const sellTxBuilder = () => exchange.sellP(0, 40, BID_1_PD_0.mul(USDC_TO_ETHER));
 
             beforeEach(async function () {
                 await fund.mock.extrapolateNav.returns(estimatedNav, 0, 0);
@@ -797,10 +809,10 @@ describe("Exchange", function () {
 
             it("Should delete the maker order", async function () {
                 await sellTxBuilder();
-                const queue = await exchange.bids(0, TRANCHE_P, 40);
+                const queue = await exchange.bids(0, TRANCHE_P, 41);
                 expect(queue.head).to.equal(0);
                 expect(queue.tail).to.equal(0);
-                const order = await exchange.getBidOrder(0, TRANCHE_P, 40, 1);
+                const order = await exchange.getBidOrder(0, TRANCHE_P, 41, 1);
                 expect(order.maker).to.equal(ethers.constants.AddressZero);
                 expect(order.amount).to.equal(0);
                 expect(order.fillable).to.equal(0);
@@ -819,12 +831,12 @@ describe("Exchange", function () {
             it("Should emit event", async function () {
                 await expect(sellTxBuilder())
                     .to.emit(exchange, "SellTrade")
-                    .withArgs(addr1, TRANCHE_P, matchedShares, 0, 39, MAX_UINT, 0);
+                    .withArgs(addr1, TRANCHE_P, matchedShares, 0, 39, 0, 0);
             });
 
             it("Should update the best bid level", async function () {
                 await sellTxBuilder();
-                expect(await exchange.bestBids(0, TRANCHE_P)).to.equal(36);
+                expect(await exchange.bestBids(0, TRANCHE_P)).to.equal(37);
             });
         });
 
@@ -860,7 +872,7 @@ describe("Exchange", function () {
                 .mul(98)
                 .div(100)
                 .div(USDC_TO_ETHER);
-            const sellTxBuilder = () => exchange.sellP(0, 32, matchedShares);
+            const sellTxBuilder = () => exchange.sellP(0, 33, matchedShares);
 
             beforeEach(async function () {
                 await fund.mock.extrapolateNav.returns(parseEther("1"), 0, 0);
@@ -875,16 +887,16 @@ describe("Exchange", function () {
 
             it("Should update maker orders", async function () {
                 await sellTxBuilder();
-                const queueAt0 = await exchange.bids(0, TRANCHE_P, 40);
+                const queueAt0 = await exchange.bids(0, TRANCHE_P, 41);
                 expect(queueAt0.head).to.equal(0);
                 expect(queueAt0.tail).to.equal(0);
-                const queueAt1 = await exchange.bids(0, TRANCHE_P, 36);
+                const queueAt1 = await exchange.bids(0, TRANCHE_P, 37);
                 expect(queueAt1.head).to.equal(0);
                 expect(queueAt1.tail).to.equal(0);
-                const queueAt2 = await exchange.bids(0, TRANCHE_P, 32);
+                const queueAt2 = await exchange.bids(0, TRANCHE_P, 33);
                 expect(queueAt2.head).to.equal(1);
                 expect(queueAt2.tail).to.equal(1);
-                const order = await exchange.getBidOrder(0, TRANCHE_P, 32, 1);
+                const order = await exchange.getBidOrder(0, TRANCHE_P, 33, 1);
                 expect(order.fillable).to.equal(BID_1_PD_N2.sub(matchedUsdcAtN2));
             });
 
@@ -917,12 +929,12 @@ describe("Exchange", function () {
             it("Should emit event", async function () {
                 await expect(sellTxBuilder())
                     .to.emit(exchange, "SellTrade")
-                    .withArgs(addr1, TRANCHE_P, matchedShares, 0, 32, 1, matchedUsdcAtN2);
+                    .withArgs(addr1, TRANCHE_P, matchedShares, 0, 33, 1, matchedUsdcAtN2);
             });
 
             it("Should update the best bid level", async function () {
                 await sellTxBuilder();
-                expect(await exchange.bestBids(0, TRANCHE_P)).to.equal(32);
+                expect(await exchange.bestBids(0, TRANCHE_P)).to.equal(33);
             });
         });
 

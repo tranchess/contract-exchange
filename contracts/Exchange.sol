@@ -183,6 +183,7 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
 
     uint256 private constant MIN_PD = 0.9e18;
     uint256 private constant MAX_PD = 1.1e18;
+    uint256 private constant PD_START = MIN_PD - PD_TICK;
     uint256 private constant PD_LEVEL_COUNT = (MAX_PD - MIN_PD) / PD_TICK + 1;
 
     /// @notice Minumum quote amount of maker bid orders
@@ -199,13 +200,15 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
         public identifiers;
 
     /// @notice Mapping of conversion ID => tranche => an array of order queues
-    mapping(uint256 => mapping(uint256 => OrderQueue[PD_LEVEL_COUNT])) public bids;
-    mapping(uint256 => mapping(uint256 => OrderQueue[PD_LEVEL_COUNT])) public asks;
+    mapping(uint256 => mapping(uint256 => OrderQueue[PD_LEVEL_COUNT + 1])) public bids;
+    mapping(uint256 => mapping(uint256 => OrderQueue[PD_LEVEL_COUNT + 1])) public asks;
 
-    /// @notice Mapping of conversion ID => best bid premium-discount level of the three tranches
+    /// @notice Mapping of conversion ID => best bid premium-discount level of the three tranches.
+    ///         Zero indicates that there is no bid order.
     mapping(uint256 => uint256[TRANCHE_COUNT]) public bestBids;
 
-    /// @notice Mapping of conversion ID => best ask premium-discount level of the three tranches
+    /// @notice Mapping of conversion ID => best ask premium-discount level of the three tranches.
+    ///         Zero or `PD_LEVEL_COUNT + 1` indicates that there is no ask order.
     mapping(uint256 => uint256[TRANCHE_COUNT]) public bestAsks;
 
     /// @notice Mapping of account => tranche => epoch ID => pending trade
@@ -332,7 +335,7 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
         uint256 clientOrderID
     ) external onlyMaker {
         require(quoteAmount >= minBidAmount, "Quote amount too low");
-        require(pdLevel < PD_LEVEL_COUNT, "Invalid premium-discount level");
+        require(pdLevel > 0 && pdLevel <= PD_LEVEL_COUNT, "Invalid premium-discount level");
         require(conversionID == fund.getConversionSize(), "Invalid conversion ID");
 
         IERC20(quoteAssetAddress).transferFrom(msg.sender, address(this), quoteAmount);
@@ -379,7 +382,7 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
         uint256 clientOrderID
     ) external onlyMaker {
         require(baseAmount >= minAskAmount, "Base amount too low");
-        require(pdLevel < PD_LEVEL_COUNT, "Invalid premium-discount level");
+        require(pdLevel > 0 && pdLevel <= PD_LEVEL_COUNT, "Invalid premium-discount level");
         require(conversionID == fund.getConversionSize(), "Invalid conversion ID");
 
         _lock(tranche, msg.sender, baseAmount);
@@ -670,14 +673,11 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
 
         // Update bestBid
         if (bestBids[conversionID][tranche] == pdLevel) {
-            uint256 bestBid = 0;
-            for (uint256 i = pdLevel + 1; i > 0; i--) {
-                if (!bids[conversionID][tranche][i - 1].isEmpty()) {
-                    bestBid = i - 1;
-                    break;
-                }
+            uint256 newBestBid = pdLevel;
+            while (newBestBid > 0 && bids[conversionID][tranche][newBestBid].isEmpty()) {
+                newBestBid--;
             }
-            bestBids[conversionID][tranche] = bestBid;
+            bestBids[conversionID][tranche] = newBestBid;
         }
 
         IERC20(quoteAssetAddress).transfer(maker, fillable);
@@ -709,14 +709,13 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
 
         // Update bestAsk
         if (bestAsks[conversionID][tranche] == pdLevel) {
-            uint256 bestAsk = PD_LEVEL_COUNT - 1;
-            for (uint256 i = pdLevel; i < PD_LEVEL_COUNT; i++) {
-                if (!asks[conversionID][tranche][i].isEmpty()) {
-                    bestAsk = i;
-                    break;
-                }
+            uint256 newBestAsk = pdLevel;
+            while (
+                newBestAsk <= PD_LEVEL_COUNT && asks[conversionID][tranche][newBestAsk].isEmpty()
+            ) {
+                newBestAsk++;
             }
-            bestAsks[conversionID][tranche] = bestAsk;
+            bestAsks[conversionID][tranche] = newBestAsk;
         }
 
         if (tranche == TRANCHE_P) {
@@ -743,7 +742,7 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
         uint256 estimatedNav,
         uint256 quoteAmount
     ) internal {
-        require(maxPDLevel < PD_LEVEL_COUNT, "Invalid premium-discount level");
+        require(maxPDLevel > 0 && maxPDLevel <= PD_LEVEL_COUNT, "Invalid premium-discount level");
         require(conversionID == fund.getConversionSize(), "Invalid conversion ID");
 
         PendingBuyTrade memory totalTrade;
@@ -755,10 +754,16 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
         }
 
         PendingBuyTrade memory currentTrade;
-        uint256 pdLevel;
-        uint256 orderIndex;
-        for (pdLevel = bestAsks[conversionID][tranche]; pdLevel <= maxPDLevel; pdLevel++) {
-            uint256 price = pdLevel.mul(PD_TICK).add(MIN_PD).multiplyDecimal(estimatedNav);
+        uint256 orderIndex = 0;
+        uint256 pdLevel = bestAsks[conversionID][tranche];
+        if (pdLevel == 0) {
+            // Zero best ask indicates that no ask order is ever placed.
+            // We set pdLevel beyond the largest valid level, forcing the following loop
+            // to exit immediately.
+            pdLevel = PD_LEVEL_COUNT + 1;
+        }
+        for (; pdLevel <= maxPDLevel; pdLevel++) {
+            uint256 price = pdLevel.mul(PD_TICK).add(PD_START).multiplyDecimal(estimatedNav);
             OrderQueue storage orderQueue = asks[conversionID][tranche][pdLevel];
             orderIndex = orderQueue.head;
             while (orderIndex != 0) {
@@ -783,7 +788,7 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
                 if (currentTrade.reservedBase < order.fillable) {
                     // Taker is completely filled.
                     currentTrade.effectiveQuote = currentTrade.frozenQuote.divideDecimal(
-                        pdLevel.mul(PD_TICK).add(MIN_PD)
+                        pdLevel.mul(PD_TICK).add(PD_START)
                     );
                 } else {
                     // Maker is completely filled. Recalculate the current trade.
@@ -829,36 +834,21 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
                 }
                 break;
             }
-            if (pdLevel == PD_LEVEL_COUNT - 1) {
-                // Ensure that pdLevel is always a valid premium-discount level when the loop ends.
-                break;
-            }
         }
-        if (orderIndex != 0) {
-            // Matching ends by partially filling the order at `orderIndex`.
-            emit BuyTrade(
-                taker,
-                tranche,
-                totalTrade.frozenQuote,
-                conversionID,
-                pdLevel,
-                orderIndex,
-                currentTrade.reservedBase
-            );
-        } else {
+        emit BuyTrade(
+            taker,
+            tranche,
+            totalTrade.frozenQuote,
+            conversionID,
+            pdLevel,
+            orderIndex,
+            orderIndex == 0 ? 0 : currentTrade.reservedBase
+        );
+        if (orderIndex == 0) {
             // Matching ends by completely filling all orders at and below the specified
             // premium-discount level `maxPDLevel`.
-            emit BuyTrade(
-                taker,
-                tranche,
-                totalTrade.frozenQuote,
-                conversionID,
-                maxPDLevel,
-                2**256 - 1,
-                0
-            );
             // Find the new best ask beyond that level.
-            for (; pdLevel < PD_LEVEL_COUNT - 1; pdLevel++) {
+            for (; pdLevel <= PD_LEVEL_COUNT; pdLevel++) {
                 if (!asks[conversionID][tranche][pdLevel].isEmpty()) {
                     break;
                 }
@@ -889,7 +879,7 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
         uint256 estimatedNav,
         uint256 baseAmount
     ) internal {
-        require(minPDLevel < PD_LEVEL_COUNT, "Invalid premium-discount level");
+        require(minPDLevel > 0 && minPDLevel <= PD_LEVEL_COUNT, "Invalid premium-discount level");
         require(conversionID == fund.getConversionSize(), "Invalid conversion ID");
 
         PendingSellTrade memory totalTrade;
@@ -901,10 +891,10 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
         }
 
         PendingSellTrade memory currentTrade;
-        uint256 pdLevel;
         uint256 orderIndex;
-        for (pdLevel = bestBids[conversionID][tranche]; pdLevel >= minPDLevel; pdLevel--) {
-            uint256 price = pdLevel.mul(PD_TICK).add(MIN_PD).multiplyDecimal(estimatedNav);
+        uint256 pdLevel = bestBids[conversionID][tranche];
+        for (; pdLevel >= minPDLevel; pdLevel--) {
+            uint256 price = pdLevel.mul(PD_TICK).add(PD_START).multiplyDecimal(estimatedNav);
             OrderQueue storage orderQueue = bids[conversionID][tranche][pdLevel];
             orderIndex = orderQueue.head;
             while (orderIndex != 0) {
@@ -928,7 +918,7 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
                 if (currentTrade.reservedQuote < order.fillable) {
                     // Taker is completely filled
                     currentTrade.effectiveBase = currentTrade.frozenBase.divideDecimal(
-                        pdLevel.mul(PD_TICK).add(MIN_PD)
+                        pdLevel.mul(PD_TICK).add(PD_START)
                     );
                 } else {
                     // Maker is completely filled. Recalculate the current trade.
@@ -968,34 +958,19 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
                 }
                 break;
             }
-            if (pdLevel == 0) {
-                // Ensure that pdLevel is always a valid premium-discount level when the loop ends.
-                break;
-            }
         }
-        if (orderIndex != 0) {
-            // Matching ends by partially filling the order at `orderIndex`.
-            emit SellTrade(
-                taker,
-                tranche,
-                totalTrade.frozenBase,
-                conversionID,
-                pdLevel,
-                orderIndex,
-                currentTrade.reservedQuote
-            );
-        } else {
+        emit SellTrade(
+            taker,
+            tranche,
+            totalTrade.frozenBase,
+            conversionID,
+            pdLevel,
+            orderIndex,
+            orderIndex == 0 ? 0 : currentTrade.reservedQuote
+        );
+        if (orderIndex == 0) {
             // Matching ends by completely filling all orders at and above the specified
             // premium-discount level `minPDLevel`.
-            emit SellTrade(
-                taker,
-                tranche,
-                totalTrade.frozenBase,
-                conversionID,
-                minPDLevel,
-                2**256 - 1,
-                0
-            );
             // Find the new best ask beyond that level.
             for (; pdLevel > 0; pdLevel--) {
                 if (!bids[conversionID][tranche][pdLevel].isEmpty()) {
