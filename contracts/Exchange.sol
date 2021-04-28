@@ -661,8 +661,6 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
         uint256 pdLevel,
         uint256 index
     ) internal {
-        require(index != 0, "invalid order");
-        require(pdLevel <= bestBids[conversionID][tranche], "invalid pd level");
         OrderQueue storage orderQueue = bids[conversionID][tranche][pdLevel];
         Order storage order = orderQueue.list[index];
         require(order.maker == maker, "invalid maker address");
@@ -696,9 +694,6 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
         uint256 pdLevel,
         uint256 index
     ) internal {
-        // TODO revert("invalid base asset");
-        require(index != 0, "invalid order");
-        require(pdLevel >= bestAsks[conversionID][tranche], "invalid pd level");
         OrderQueue storage orderQueue = asks[conversionID][tranche][pdLevel];
         Order storage order = orderQueue.list[index];
         require(order.maker == maker, "invalid maker address");
