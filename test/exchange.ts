@@ -253,6 +253,11 @@ describe("Exchange", function () {
             await expect(exchange.placeBid(TRANCHE_P, 82, MIN_BID_AMOUNT, 0, 0)).to.be.revertedWith(
                 "Invalid premium-discount level"
             );
+
+            await exchange.placeAsk(TRANCHE_P, 41, parseEther("1"), 0, 0);
+            await expect(exchange.placeBid(TRANCHE_P, 41, MIN_BID_AMOUNT, 0, 0)).to.be.revertedWith(
+                "Invalid premium-discount level"
+            );
         });
 
         it("Should check conversion ID", async function () {
@@ -325,6 +330,11 @@ describe("Exchange", function () {
             await expect(exchange.placeAsk(TRANCHE_P, 82, MIN_ASK_AMOUNT, 0, 0)).to.be.revertedWith(
                 "Invalid premium-discount level"
             );
+
+            await exchange.placeBid(TRANCHE_P, 41, parseUsdc("100"), 0, 0);
+            await expect(exchange.placeAsk(TRANCHE_P, 41, MIN_ASK_AMOUNT, 0, 0)).to.be.revertedWith(
+                "Invalid premium-discount level"
+            );
         });
 
         it("Should check conversion ID", async function () {
@@ -392,7 +402,7 @@ describe("Exchange", function () {
     const BID_3_PD_N1 = parseUsdc("30");
     const BID_1_PD_N2 = parseUsdc("80");
 
-    async function orderBookFixture(): Promise<FixtureData> {
+    async function buyOrderBookFixture(): Promise<FixtureData> {
         const f = await loadFixture(deployFixture);
         const u2 = f.wallets.user2;
         const u3 = f.wallets.user3;
@@ -408,14 +418,47 @@ describe("Exchange", function () {
         // +1%   20(user2)  30(user3)  50(user2)
         //  0%  100(user2)
         // Bid:
-        //  0%  100(user2)
-        // -1%   50(user3)  20(user2)  30(user2)
-        // -2%   80(user3)
+        // -1%  100(user2)
+        // -2%   50(user3)  20(user2)  30(user2)
+        // -3%   80(user3)
         await f.exchange.connect(u3).placeAsk(TRANCHE_P, 49, ASK_1_PD_2, 0, 0);
         await f.exchange.connect(u2).placeAsk(TRANCHE_P, 45, ASK_1_PD_1, 0, 0);
         await f.exchange.connect(u3).placeAsk(TRANCHE_P, 45, ASK_2_PD_1, 0, 0);
         await f.exchange.connect(u2).placeAsk(TRANCHE_P, 45, ASK_3_PD_1, 0, 0);
         await f.exchange.connect(u2).placeAsk(TRANCHE_P, 41, ASK_1_PD_0, 0, 0);
+        await f.exchange.connect(u2).placeBid(TRANCHE_P, 37, BID_1_PD_0, 0, 0);
+        await f.exchange.connect(u3).placeBid(TRANCHE_P, 33, BID_1_PD_N1, 0, 0);
+        await f.exchange.connect(u2).placeBid(TRANCHE_P, 33, BID_2_PD_N1, 0, 0);
+        await f.exchange.connect(u2).placeBid(TRANCHE_P, 33, BID_3_PD_N1, 0, 0);
+        await f.exchange.connect(u3).placeBid(TRANCHE_P, 29, BID_1_PD_N2, 0, 0);
+
+        return f;
+    }
+
+    async function sellOrderBookFixture(): Promise<FixtureData> {
+        const f = await loadFixture(deployFixture);
+        const u2 = f.wallets.user2;
+        const u3 = f.wallets.user3;
+        await f.votingEscrow.mock.getTimestampDropBelow.returns(f.startEpoch + EPOCH * 1000);
+        await f.exchange.connect(u3).applyForMaker();
+        await f.votingEscrow.mock.getTimestampDropBelow.revertsWithReason(
+            "Mock on the method is not initialized"
+        );
+
+        // Order book of Share P
+        // Ask:
+        // +3%   60(user3)
+        // +2%   20(user2)  30(user3)  50(user2)
+        //  1%  100(user2)
+        // Bid:
+        //  0%  100(user2)
+        // -1%   50(user3)  20(user2)  30(user2)
+        // -2%   80(user3)
+        await f.exchange.connect(u3).placeAsk(TRANCHE_P, 53, ASK_1_PD_2, 0, 0);
+        await f.exchange.connect(u2).placeAsk(TRANCHE_P, 49, ASK_1_PD_1, 0, 0);
+        await f.exchange.connect(u3).placeAsk(TRANCHE_P, 49, ASK_2_PD_1, 0, 0);
+        await f.exchange.connect(u2).placeAsk(TRANCHE_P, 49, ASK_3_PD_1, 0, 0);
+        await f.exchange.connect(u2).placeAsk(TRANCHE_P, 45, ASK_1_PD_0, 0, 0);
         await f.exchange.connect(u2).placeBid(TRANCHE_P, 41, BID_1_PD_0, 0, 0);
         await f.exchange.connect(u3).placeBid(TRANCHE_P, 37, BID_1_PD_N1, 0, 0);
         await f.exchange.connect(u2).placeBid(TRANCHE_P, 37, BID_2_PD_N1, 0, 0);
@@ -431,7 +474,7 @@ describe("Exchange", function () {
         before(function () {
             // Override fixture
             outerFixture = currentFixture;
-            currentFixture = orderBookFixture;
+            currentFixture = buyOrderBookFixture;
         });
 
         after(function () {
@@ -688,7 +731,7 @@ describe("Exchange", function () {
         before(function () {
             // Override fixture
             outerFixture = currentFixture;
-            currentFixture = orderBookFixture;
+            currentFixture = sellOrderBookFixture;
         });
 
         after(function () {
