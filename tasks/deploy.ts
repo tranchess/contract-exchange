@@ -95,19 +95,17 @@ task("deploy", "Deploy contracts", async (_args, hre) => {
         usdcDecimals,
         votingEscrowAddress,
         parseUnits(minOrderAmount, usdcDecimals),
-        parseEther(minOrderAmount)
+        parseEther(minOrderAmount),
+        parseEther(makerRequirement)
     );
     addressFile.set("exchange_impl", exchangeImpl.address);
     console.log("Exchange implementation:", exchangeImpl.address);
 
-    const exchangeInitTx = await exchangeImpl.populateTransaction.init(
-        parseEther(makerRequirement)
-    );
     const TranchessProxy = await ethers.getContractFactory("TranchessProxy");
     const exchangeProxy = await TranchessProxy.deploy(
         exchangeImpl.address,
         deployer.address,
-        exchangeInitTx.data,
+        "0x",
         { gasLimit: 1e6 } // Gas estimation may fail
     );
     const exchange = Exchange.attach(exchangeProxy.address);

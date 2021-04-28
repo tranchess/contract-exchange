@@ -3,7 +3,6 @@ pragma solidity >=0.6.10 <0.8.0;
 pragma experimental ABIEncoderV2;
 
 import "./utils/SafeDecimalMath.sol";
-import "@openzeppelin/contracts/proxy/Initializable.sol";
 
 import {Order, OrderQueue, LibOrderQueue} from "./libs/LibOrderQueue.sol";
 import {
@@ -20,7 +19,7 @@ import "./Staking.sol";
 /// @title Tranchess's Exchange Contract
 /// @notice A decentralized exchange to match premium-discount orders and clear trades
 /// @author Tranchess
-contract Exchange is ExchangeRoles, Staking, Initializable {
+contract Exchange is ExchangeRoles, Staking {
     using SafeDecimalMath for uint256;
     using LibOrderQueue for OrderQueue;
     using LibPendingBuyTrade for PendingBuyTrade;
@@ -221,20 +220,17 @@ contract Exchange is ExchangeRoles, Staking, Initializable {
         uint256 quoteDecimals_,
         address votingEscrow_,
         uint256 minBidAmount_,
-        uint256 minAskAmount_
+        uint256 minAskAmount_,
+        uint256 makerRequirement_
     )
         public
-        ExchangeRoles(votingEscrow_)
+        ExchangeRoles(votingEscrow_, makerRequirement_)
         Staking(fund_, chess_, chessController_, quoteAssetAddress_)
     {
         minBidAmount = minBidAmount_;
         minAskAmount = minAskAmount_;
         require(quoteDecimals_ <= 18, "Quote asset decimals larger than 18");
         _quoteDecimalMultiplier = 10**(18 - quoteDecimals_);
-    }
-
-    function init(uint256 makerRequirement_) external initializer {
-        _initExchangeRoles(makerRequirement_);
     }
 
     /// @notice Return end timestamp of the epoch containing a given timestamp.

@@ -15,16 +15,13 @@ abstract contract ExchangeRoles {
     IVotingEscrow public immutable votingEscrow;
 
     /// @notice Minimum vote-locked governance token balance required to place maker orders.
-    uint256 public makerRequirement;
+    uint256 public immutable makerRequirement;
 
     /// @notice Mapping of account => maker expiration timestamp
     mapping(address => uint256) public makerExpiration;
 
-    constructor(address votingEscrow_) public {
+    constructor(address votingEscrow_, uint256 makerRequirement_) public {
         votingEscrow = IVotingEscrow(votingEscrow_);
-    }
-
-    function _initExchangeRoles(uint256 makerRequirement_) internal {
         makerRequirement = makerRequirement_;
     }
 
