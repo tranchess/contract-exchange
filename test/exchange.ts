@@ -119,14 +119,14 @@ describe("Exchange", function () {
             6,
             votingEscrow.address,
             MIN_BID_AMOUNT,
-            MIN_ASK_AMOUNT
+            MIN_ASK_AMOUNT,
+            MAKER_REQUIREMENT
         );
-        const exchangeInitTx = await exchangeImpl.populateTransaction.init(MAKER_REQUIREMENT);
         const TranchessProxy = await ethers.getContractFactory("TranchessProxy");
         const exchangeProxy = await TranchessProxy.connect(owner).deploy(
             exchangeImpl.address,
             owner.address,
-            exchangeInitTx.data
+            "0x"
         );
         const exchange = Exchange.attach(exchangeProxy.address);
 
