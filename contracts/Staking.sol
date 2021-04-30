@@ -10,6 +10,7 @@ import "./utils/SafeDecimalMath.sol";
 import "./interfaces/IFund.sol";
 import "./interfaces/IChess.sol";
 import "./interfaces/ITrancheIndex.sol";
+import "./interfaces/IPrimaryMarket.sol";
 
 interface IChessController {
     function getFundRelativeWeight(address account, uint256 timestamp)
@@ -228,6 +229,13 @@ abstract contract Staking is ITrancheIndex {
     /// @param amount The amount to deposit
     function deposit(uint256 tranche, uint256 amount) external {
         _deposit(tranche, msg.sender, amount);
+    }
+
+    /// @dev Claim settled shares and deposit to get rewards
+    /// @param primaryMarket The primary market to claim shares from
+    function claimAndDeposit(address primaryMarket) external {
+        (uint256 createdShares, ) = IPrimaryMarket(primaryMarket).claim(msg.sender);
+        _deposit(TRANCHE_P, msg.sender, createdShares);
     }
 
     /// @dev Withdraw
