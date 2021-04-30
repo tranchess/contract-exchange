@@ -331,7 +331,11 @@ contract Exchange is ExchangeRoles, Staking {
         uint256 clientOrderID
     ) external onlyMaker {
         require(quoteAmount >= minBidAmount, "Quote amount too low");
-        require(pdLevel > 0 && pdLevel <= PD_LEVEL_COUNT, "Invalid premium-discount level");
+        uint256 bestAsk = bestAsks[conversionID][tranche];
+        require(
+            pdLevel > 0 && pdLevel < (bestAsk == 0 ? PD_LEVEL_COUNT + 1 : bestAsk),
+            "Invalid premium-discount level"
+        );
         require(conversionID == fund.getConversionSize(), "Invalid conversion ID");
 
         IERC20(quoteAssetAddress).transferFrom(msg.sender, address(this), quoteAmount);
@@ -378,7 +382,10 @@ contract Exchange is ExchangeRoles, Staking {
         uint256 clientOrderID
     ) external onlyMaker {
         require(baseAmount >= minAskAmount, "Base amount too low");
-        require(pdLevel > 0 && pdLevel <= PD_LEVEL_COUNT, "Invalid premium-discount level");
+        require(
+            pdLevel > bestBids[conversionID][tranche] && pdLevel <= PD_LEVEL_COUNT,
+            "Invalid premium-discount level"
+        );
         require(conversionID == fund.getConversionSize(), "Invalid conversion ID");
 
         _lock(tranche, msg.sender, baseAmount);
