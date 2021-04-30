@@ -330,8 +330,8 @@ contract Exchange is ExchangeRoles, Staking {
         uint256 conversionID,
         uint256 clientOrderID
     ) external onlyMaker {
-        uint256 bestAsk = bestAsks[conversionID][tranche];
         require(quoteAmount >= minBidAmount, "Quote amount too low");
+        uint256 bestAsk = bestAsks[conversionID][tranche];
         require(
             pdLevel > 0 && pdLevel < (bestAsk == 0 ? PD_LEVEL_COUNT + 1 : bestAsk),
             "Invalid premium-discount level"

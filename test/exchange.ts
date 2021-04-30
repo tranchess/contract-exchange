@@ -402,7 +402,7 @@ describe("Exchange", function () {
     const BID_3_PD_N1 = parseUsdc("30");
     const BID_1_PD_N2 = parseUsdc("80");
 
-    async function buyOrderBookFixture(): Promise<FixtureData> {
+    async function askOrderBookFixture(): Promise<FixtureData> {
         const f = await loadFixture(deployFixture);
         const u2 = f.wallets.user2;
         const u3 = f.wallets.user3;
@@ -417,25 +417,16 @@ describe("Exchange", function () {
         // +2%   60(user3)
         // +1%   20(user2)  30(user3)  50(user2)
         //  0%  100(user2)
-        // Bid:
-        // -1%  100(user2)
-        // -2%   50(user3)  20(user2)  30(user2)
-        // -3%   80(user3)
         await f.exchange.connect(u3).placeAsk(TRANCHE_P, 49, ASK_1_PD_2, 0, 0);
         await f.exchange.connect(u2).placeAsk(TRANCHE_P, 45, ASK_1_PD_1, 0, 0);
         await f.exchange.connect(u3).placeAsk(TRANCHE_P, 45, ASK_2_PD_1, 0, 0);
         await f.exchange.connect(u2).placeAsk(TRANCHE_P, 45, ASK_3_PD_1, 0, 0);
         await f.exchange.connect(u2).placeAsk(TRANCHE_P, 41, ASK_1_PD_0, 0, 0);
-        await f.exchange.connect(u2).placeBid(TRANCHE_P, 37, BID_1_PD_0, 0, 0);
-        await f.exchange.connect(u3).placeBid(TRANCHE_P, 33, BID_1_PD_N1, 0, 0);
-        await f.exchange.connect(u2).placeBid(TRANCHE_P, 33, BID_2_PD_N1, 0, 0);
-        await f.exchange.connect(u2).placeBid(TRANCHE_P, 33, BID_3_PD_N1, 0, 0);
-        await f.exchange.connect(u3).placeBid(TRANCHE_P, 29, BID_1_PD_N2, 0, 0);
 
         return f;
     }
 
-    async function sellOrderBookFixture(): Promise<FixtureData> {
+    async function bidOrderBookFixture(): Promise<FixtureData> {
         const f = await loadFixture(deployFixture);
         const u2 = f.wallets.user2;
         const u3 = f.wallets.user3;
@@ -446,19 +437,10 @@ describe("Exchange", function () {
         );
 
         // Order book of Share P
-        // Ask:
-        // +3%   60(user3)
-        // +2%   20(user2)  30(user3)  50(user2)
-        //  1%  100(user2)
         // Bid:
         //  0%  100(user2)
         // -1%   50(user3)  20(user2)  30(user2)
         // -2%   80(user3)
-        await f.exchange.connect(u3).placeAsk(TRANCHE_P, 53, ASK_1_PD_2, 0, 0);
-        await f.exchange.connect(u2).placeAsk(TRANCHE_P, 49, ASK_1_PD_1, 0, 0);
-        await f.exchange.connect(u3).placeAsk(TRANCHE_P, 49, ASK_2_PD_1, 0, 0);
-        await f.exchange.connect(u2).placeAsk(TRANCHE_P, 49, ASK_3_PD_1, 0, 0);
-        await f.exchange.connect(u2).placeAsk(TRANCHE_P, 45, ASK_1_PD_0, 0, 0);
         await f.exchange.connect(u2).placeBid(TRANCHE_P, 41, BID_1_PD_0, 0, 0);
         await f.exchange.connect(u3).placeBid(TRANCHE_P, 37, BID_1_PD_N1, 0, 0);
         await f.exchange.connect(u2).placeBid(TRANCHE_P, 37, BID_2_PD_N1, 0, 0);
@@ -474,7 +456,7 @@ describe("Exchange", function () {
         before(function () {
             // Override fixture
             outerFixture = currentFixture;
-            currentFixture = buyOrderBookFixture;
+            currentFixture = askOrderBookFixture;
         });
 
         after(function () {
@@ -731,7 +713,7 @@ describe("Exchange", function () {
         before(function () {
             // Override fixture
             outerFixture = currentFixture;
-            currentFixture = sellOrderBookFixture;
+            currentFixture = bidOrderBookFixture;
         });
 
         after(function () {
