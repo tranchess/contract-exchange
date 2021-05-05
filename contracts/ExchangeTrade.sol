@@ -2,10 +2,14 @@
 pragma solidity ^0.6.9;
 pragma experimental ABIEncoderV2;
 
+import "@openzeppelin/contracts/math/SafeMath.sol";
+
 /// @title Tranchess's Pending Trade Contract
 /// @notice Pending trade struct and implementation
 /// @author Tranchess
 contract ExchangeTrade {
+    using SafeMath for uint256;
+
     /// @notice Pending trades of an account
     struct PendingTrade {
         PendingBuyTrade takerBuy; // Buy trades as taker
@@ -37,9 +41,9 @@ contract ExchangeTrade {
     {
         return
             PendingBuyTrade({
-                frozenQuote: tradeA.frozenQuote + tradeB.frozenQuote,
-                effectiveQuote: tradeA.effectiveQuote + tradeB.effectiveQuote,
-                reservedBase: tradeA.reservedBase + tradeB.reservedBase
+                frozenQuote: tradeA.frozenQuote.add(tradeB.frozenQuote),
+                effectiveQuote: tradeA.effectiveQuote.add(tradeB.effectiveQuote),
+                reservedBase: tradeA.reservedBase.add(tradeB.reservedBase)
             });
     }
 
@@ -54,9 +58,9 @@ contract ExchangeTrade {
     {
         return
             PendingSellTrade({
-                frozenBase: tradeA.frozenBase + tradeB.frozenBase,
-                effectiveBase: tradeA.effectiveBase + tradeB.effectiveBase,
-                reservedQuote: tradeA.reservedQuote + tradeB.reservedQuote
+                frozenBase: tradeA.frozenBase.add(tradeB.frozenBase),
+                effectiveBase: tradeA.effectiveBase.add(tradeB.effectiveBase),
+                reservedQuote: tradeA.reservedQuote.add(tradeB.reservedQuote)
             });
     }
 }

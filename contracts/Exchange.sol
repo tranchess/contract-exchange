@@ -480,7 +480,13 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         (uint256 sharesB, uint256 quoteAmountB) =
             _settleMaker(msg.sender, TRANCHE_B, estimatedNavB, periodID);
 
-        _clear(periodID, sharesP, sharesA, sharesB, quoteAmountP + quoteAmountA + quoteAmountB);
+        _clear(
+            periodID,
+            sharesP,
+            sharesA,
+            sharesB,
+            quoteAmountP.add(quoteAmountA).add(quoteAmountB)
+        );
     }
 
     /// @notice Settle trades of a specified epoch for takers
@@ -496,7 +502,13 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         (uint256 sharesB, uint256 quoteAmountB) =
             _settleTaker(msg.sender, TRANCHE_B, estimatedNavB, periodID);
 
-        _clear(periodID, sharesP, sharesA, sharesB, quoteAmountP + quoteAmountA + quoteAmountB);
+        _clear(
+            periodID,
+            sharesP,
+            sharesA,
+            sharesB,
+            quoteAmountP.add(quoteAmountA).add(quoteAmountB)
+        );
     }
 
     /// @dev Cancel a bid order
@@ -798,10 +810,10 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         if (takerBuy.frozenQuote > 0) {
             (uint256 executionQuote, uint256 executionBase) =
                 _buyTradeResult(takerBuy, estimatedNav);
-            baseAmount += executionBase;
+            baseAmount = baseAmount.add(executionBase);
 
             uint256 refundQuote = takerBuy.frozenQuote.sub(executionQuote);
-            quoteAmount += refundQuote;
+            quoteAmount = quoteAmount.add(refundQuote);
 
             // Delete by zeroing it out
             delete pendingTrade.takerBuy;
@@ -812,10 +824,10 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         if (takerSell.frozenBase > 0) {
             (uint256 executionQuote, uint256 executionBase) =
                 _sellTradeResult(takerSell, estimatedNav);
-            quoteAmount += executionQuote;
+            quoteAmount = quoteAmount.add(executionQuote);
 
             uint256 refundBase = takerSell.frozenBase.sub(executionBase);
-            baseAmount += refundBase;
+            baseAmount = baseAmount.add(refundBase);
 
             // Delete by zeroing it out
             delete pendingTrade.takerSell;
@@ -840,10 +852,10 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         if (makerSell.frozenQuote > 0) {
             (uint256 executionQuote, uint256 executionBase) =
                 _buyTradeResult(makerSell, estimatedNav);
-            baseAmount += executionBase;
+            baseAmount = baseAmount.add(executionBase);
 
             uint256 refundQuote = makerSell.frozenQuote.sub(executionQuote);
-            quoteAmount += refundQuote;
+            quoteAmount = quoteAmount.add(refundQuote);
 
             // Delete by zeroing it out
             delete pendingTrade.makerSell;
@@ -854,10 +866,10 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
         if (makerBuy.frozenBase > 0) {
             (uint256 executionQuote, uint256 executionBase) =
                 _sellTradeResult(makerBuy, estimatedNav);
-            quoteAmount += executionQuote;
+            quoteAmount = quoteAmount.add(executionQuote);
 
             uint256 refundBase = makerBuy.frozenBase.sub(executionBase);
-            baseAmount += refundBase;
+            baseAmount = baseAmount.add(refundBase);
 
             // Delete by zeroing it out
             delete pendingTrade.makerBuy;
@@ -950,7 +962,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
     {
         uint256 effectiveQuote = buyTrade.effectiveQuote;
         uint256 reservedBase = buyTrade.reservedBase;
-        if (effectiveQuote < reservedBase * nav) {
+        if (effectiveQuote < reservedBase.mul(nav)) {
             // Reserved base is enough to execute the trade.
             // nav is always positive here
             return (buyTrade.frozenQuote, effectiveQuote / nav);
@@ -958,7 +970,7 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
 
         // Reserved base is not enough. The trade is partially executed
         // and a fraction of frozenQuote is returned to the taker.
-        return ((buyTrade.frozenQuote * reservedBase * nav) / effectiveQuote, reservedBase);
+        return (buyTrade.frozenQuote.mul(reservedBase).mul(nav).div(effectiveQuote), reservedBase);
     }
 
     /// @dev Calculate the result of a pending sell trade with a given NAV
@@ -973,13 +985,13 @@ contract Exchange is ExchangeRoles, ExchangeOrderBook, ExchangeTrade, Staking, I
     {
         uint256 effectiveBase = sellTrade.effectiveBase;
         uint256 reservedQuote = sellTrade.reservedQuote;
-        if (effectiveBase * nav < reservedQuote) {
+        if (effectiveBase.mul(nav) < reservedQuote) {
             // Reserved quote is enough to execute the trade.
-            return (effectiveBase * nav, sellTrade.frozenBase);
+            return (effectiveBase.mul(nav), sellTrade.frozenBase);
         }
 
         // Reserved quote is not enough. The trade is partially executed
         // and a fraction of frozenBase is returned to the taker.
-        return (reservedQuote, (sellTrade.frozenBase * reservedQuote) / nav / effectiveBase);
+        return (reservedQuote, sellTrade.frozenBase.mul(reservedQuote).div(nav).div(effectiveBase));
     }
 }
