@@ -35,7 +35,8 @@ contract Exchange is ExchangeRoles, Staking {
     /// @param maker Account placing the order
     /// @param tranche Tranche of the share to buy
     /// @param pdLevel Premium-discount level
-    /// @param quoteAmount Amount of quote asset in the order
+    /// @param quoteAmount Amount of quote asset in the order, rounding precision to 18
+    ///                    for quote assets with precision other than 18 decimal places
     /// @param conversionID The latest conversion ID when the order is placed
     /// @param clientOrderID Order ID specified by user
     /// @param orderIndex Index of the order in the order queue
@@ -71,10 +72,12 @@ contract Exchange is ExchangeRoles, Staking {
     /// @param maker Account placing the order
     /// @param tranche Tranche of the share
     /// @param pdLevel Premium-discount level
-    /// @param quoteAmount Original amount of quote asset in the order
+    /// @param quoteAmount Original amount of quote asset in the order, rounding precision to 18
+    ///                    for quote assets with precision other than 18 decimal places
     /// @param conversionID The latest conversion ID when the order is placed
     /// @param orderIndex Index of the order in the order queue
-    /// @param fillable Unfilled amount when the order is canceled
+    /// @param fillable Unfilled amount when the order is canceled, rounding precision to 18 for
+    ///                 quote assets with precision other than 18 decimal places
     event BidOrderCanceled(
         address indexed maker,
         uint256 indexed tranche,
@@ -106,7 +109,8 @@ contract Exchange is ExchangeRoles, Staking {
     /// @notice Matching result of a taker bid order.
     /// @param taker Account placing the order
     /// @param tranche Tranche of the share
-    /// @param quoteAmount Matched amount of quote asset
+    /// @param quoteAmount Matched amount of quote asset, rounding precision to 18 for quote assets
+    ///                    with precision other than 18 decimal places
     /// @param conversionID Conversion ID of this trade
     /// @param lastMatchedPDLevel Premium-discount level of the last matched maker order
     /// @param lastMatchedOrderIndex Index of the last matched maker order in its order queue
@@ -128,7 +132,9 @@ contract Exchange is ExchangeRoles, Staking {
     /// @param conversionID Conversion ID of this trade
     /// @param lastMatchedPDLevel Premium-discount level of the last matched maker order
     /// @param lastMatchedOrderIndex Index of the last matched maker order in its order queue
-    /// @param lastMatchedQuoteAmount Matched quote asset amount of the last matched maker order
+    /// @param lastMatchedQuoteAmount Matched quote asset amount of the last matched maker order,
+    ///                               rounding precision to 18 for quote assets with precision
+    ///                               other than 18 decimal places
     event SellTrade(
         address indexed taker,
         uint256 indexed tranche,
@@ -145,7 +151,8 @@ contract Exchange is ExchangeRoles, Staking {
     /// @param amountP Amount of Share P added to the account's available balance
     /// @param amountA Amount of Share A added to the account's available balance
     /// @param amountB Amount of Share B added to the account's available balance
-    /// @param quoteAmount Amount of quote asset transfered to the account
+    /// @param quoteAmount Amount of quote asset transfered to the account, rounding precision to 18
+    ///                    for quote assets with precision other than 18 decimal places
     event MakerSettled(
         address indexed account,
         uint256 epoch,
@@ -161,7 +168,8 @@ contract Exchange is ExchangeRoles, Staking {
     /// @param amountP Amount of Share P added to the account's available balance
     /// @param amountA Amount of Share A added to the account's available balance
     /// @param amountB Amount of Share B added to the account's available balance
-    /// @param quoteAmount Amount of quote asset transfered to the account
+    /// @param quoteAmount Amount of quote asset transfered to the account, rounding precision to 18
+    ///                    for quote assets with precision other than 18 decimal places
     event TakerSettled(
         address indexed account,
         uint256 epoch,
@@ -185,7 +193,7 @@ contract Exchange is ExchangeRoles, Staking {
     uint256 private constant PD_START = MIN_PD - PD_TICK;
     uint256 private constant PD_LEVEL_COUNT = (MAX_PD - MIN_PD) / PD_TICK + 1;
 
-    /// @notice Minumum quote amount of maker bid orders
+    /// @notice Minumum quote amount of maker bid orders with 18 decimal places
     uint256 public immutable minBidAmount;
 
     /// @notice Minumum base amount of maker ask orders
@@ -320,7 +328,7 @@ contract Exchange is ExchangeRoles, Staking {
     /// @notice Place a bid order for makers
     /// @param tranche Tranche of the base asset
     /// @param pdLevel Premium-discount level
-    /// @param quoteAmount Quote asset amount
+    /// @param quoteAmount Quote asset amount with 18 decimal places
     /// @param conversionID Current conversion ID. Revert if conversion is triggered simultaneously
     /// @param clientOrderID Optional self-assigned order ID. Index starting with 1
     function placeBid(
@@ -338,7 +346,7 @@ contract Exchange is ExchangeRoles, Staking {
         );
         require(conversionID == fund.getConversionSize(), "Invalid conversion ID");
 
-        IERC20(quoteAssetAddress).transferFrom(msg.sender, address(this), quoteAmount);
+        _transferQuoteFrom(msg.sender, quoteAmount);
 
         uint256 index =
             bids[conversionID][tranche][pdLevel].append(msg.sender, quoteAmount, conversionID);
@@ -494,7 +502,7 @@ contract Exchange is ExchangeRoles, Staking {
     /// @notice Buy share P
     /// @param conversionID Current conversion ID. Revert if conversion is triggered simultaneously
     /// @param maxPDLevel Maximal premium-discount level accepted
-    /// @param quoteAmount Amount of quote assets willing to trade
+    /// @param quoteAmount Amount of quote assets (with 18 decimal places) willing to trade
     function buyP(
         uint256 conversionID,
         uint256 maxPDLevel,
@@ -507,7 +515,7 @@ contract Exchange is ExchangeRoles, Staking {
     /// @notice Buy share A
     /// @param conversionID Current conversion ID. Revert if conversion is triggered simultaneously
     /// @param maxPDLevel Maximal premium-discount level accepted
-    /// @param quoteAmount Amount of quote assets willing to trade
+    /// @param quoteAmount Amount of quote assets (with 18 decimal places) willing to trade
     function buyA(
         uint256 conversionID,
         uint256 maxPDLevel,
@@ -520,7 +528,7 @@ contract Exchange is ExchangeRoles, Staking {
     /// @notice Buy share B
     /// @param conversionID Current conversion ID. Revert if conversion is triggered simultaneously
     /// @param maxPDLevel Maximal premium-discount level accepted
-    /// @param quoteAmount Amount of quote assets willing to trade
+    /// @param quoteAmount Amount of quote assets (with 18 decimal places) willing to trade
     function buyB(
         uint256 conversionID,
         uint256 maxPDLevel,
@@ -574,7 +582,8 @@ contract Exchange is ExchangeRoles, Staking {
     /// @return sharesP Share P amount added to msg.sender's available balance
     /// @return sharesA Share A amount added to msg.sender's available balance
     /// @return sharesB Share B amount added to msg.sender's available balance
-    /// @return quoteAmount Quote asset amount transfered to msg.sender
+    /// @return quoteAmount Quote asset amount transfered to msg.sender, rounding precison to 18
+    ///                     for quote assets with precision other than 18 decimal places
     function settleMaker(uint256 epoch)
         external
         returns (
@@ -603,9 +612,7 @@ contract Exchange is ExchangeRoles, Staking {
             conversionID
         );
         quoteAmount = quoteAmountP + quoteAmountA + quoteAmountB;
-        if (quoteAmount > 0) {
-            IERC20(quoteAssetAddress).transfer(msg.sender, quoteAmount);
-        }
+        _transferQuote(msg.sender, quoteAmount);
 
         emit MakerSettled(msg.sender, epoch, sharesP, sharesA, sharesB, quoteAmount);
     }
@@ -615,7 +622,8 @@ contract Exchange is ExchangeRoles, Staking {
     /// @return sharesP Share P amount added to msg.sender's available balance
     /// @return sharesA Share A amount added to msg.sender's available balance
     /// @return sharesB Share B amount added to msg.sender's available balance
-    /// @return quoteAmount Quote asset amount transfered to msg.sender
+    /// @return quoteAmount Quote asset amount transfered to msg.sender, rounding precison to 18
+    ///                     for quote assets with precision other than 18 decimal places
     function settleTaker(uint256 epoch)
         external
         returns (
@@ -644,9 +652,7 @@ contract Exchange is ExchangeRoles, Staking {
             conversionID
         );
         quoteAmount = quoteAmountP + quoteAmountA + quoteAmountB;
-        if (quoteAmount > 0) {
-            IERC20(quoteAssetAddress).transfer(msg.sender, quoteAmount);
-        }
+        _transferQuote(msg.sender, quoteAmount);
 
         emit TakerSettled(msg.sender, epoch, sharesP, sharesA, sharesB, quoteAmount);
     }
@@ -681,7 +687,7 @@ contract Exchange is ExchangeRoles, Staking {
             bestBids[conversionID][tranche] = newBestBid;
         }
 
-        IERC20(quoteAssetAddress).transfer(maker, fillable);
+        _transferQuote(maker, fillable);
     }
 
     /// @dev Cancel an ask order
@@ -731,7 +737,7 @@ contract Exchange is ExchangeRoles, Staking {
     /// @param tranche Tranche of the base asset
     /// @param maxPDLevel Maximal premium-discount level accepted
     /// @param estimatedNav Estimated net asset value of the base asset
-    /// @param quoteAmount Amount of quote assets willing to trade
+    /// @param quoteAmount Amount of quote assets willing to trade with 18 decimal places
     function _buy(
         uint256 conversionID,
         address taker,
@@ -777,11 +783,9 @@ contract Exchange is ExchangeRoles, Staking {
 
                 // Calculate the current trade assuming that the taker would be completely filled.
                 currentTrade.frozenQuote = quoteAmount.sub(totalTrade.frozenQuote);
-                currentTrade.reservedBase = currentTrade
-                    .frozenQuote
-                    .mul(_quoteDecimalMultiplier)
-                    .mul(MAKER_RESERVE_RATIO)
-                    .div(price);
+                currentTrade.reservedBase = currentTrade.frozenQuote.mul(MAKER_RESERVE_RATIO).div(
+                    price
+                );
 
                 if (currentTrade.reservedBase < order.fillable) {
                     // Taker is completely filled.
@@ -790,16 +794,10 @@ contract Exchange is ExchangeRoles, Staking {
                     );
                 } else {
                     // Maker is completely filled. Recalculate the current trade.
-                    currentTrade.frozenQuote = order
-                        .fillable
-                        .mul(price)
-                        .div(MAKER_RESERVE_RATIO)
-                        .div(_quoteDecimalMultiplier);
-                    currentTrade.effectiveQuote = order
-                        .fillable
-                        .mul(estimatedNav)
-                        .div(MAKER_RESERVE_RATIO)
-                        .div(_quoteDecimalMultiplier);
+                    currentTrade.frozenQuote = order.fillable.mul(price).div(MAKER_RESERVE_RATIO);
+                    currentTrade.effectiveQuote = order.fillable.mul(estimatedNav).div(
+                        MAKER_RESERVE_RATIO
+                    );
                     currentTrade.reservedBase = order.fillable;
                 }
                 totalTrade.frozenQuote = totalTrade.frozenQuote.add(currentTrade.frozenQuote);
@@ -858,7 +856,7 @@ contract Exchange is ExchangeRoles, Staking {
             totalTrade.frozenQuote > 0,
             "Nothing can be bought at the given premium-discount level"
         );
-        IERC20(quoteAssetAddress).transferFrom(taker, address(this), totalTrade.frozenQuote);
+        _transferQuoteFrom(taker, totalTrade.frozenQuote);
         pendingTrades[taker][tranche][epoch].takerBuy.add(totalTrade);
     }
 
@@ -910,8 +908,7 @@ contract Exchange is ExchangeRoles, Staking {
                 currentTrade.reservedQuote = currentTrade
                     .frozenBase
                     .multiplyDecimal(MAKER_RESERVE_RATIO)
-                    .multiplyDecimal(price)
-                    .div(_quoteDecimalMultiplier);
+                    .multiplyDecimal(price);
 
                 if (currentTrade.reservedQuote < order.fillable) {
                     // Taker is completely filled
@@ -920,14 +917,11 @@ contract Exchange is ExchangeRoles, Staking {
                     );
                 } else {
                     // Maker is completely filled. Recalculate the current trade.
-                    currentTrade.frozenBase = order
-                        .fillable
-                        .mul(_quoteDecimalMultiplier)
-                        .divideDecimal(price)
-                        .divideDecimal(MAKER_RESERVE_RATIO);
+                    currentTrade.frozenBase = order.fillable.divideDecimal(price).divideDecimal(
+                        MAKER_RESERVE_RATIO
+                    );
                     currentTrade.effectiveBase = order
                         .fillable
-                        .mul(_quoteDecimalMultiplier)
                         .divideDecimal(estimatedNav)
                         .divideDecimal(MAKER_RESERVE_RATIO);
                     currentTrade.reservedQuote = order.fillable;
@@ -1077,23 +1071,20 @@ contract Exchange is ExchangeRoles, Staking {
     /// @return executionBase Real amount of base asset waiting for settlment
     function _buyTradeResult(PendingBuyTrade memory buyTrade, uint256 nav)
         internal
-        view
+        pure
         returns (uint256 executionQuote, uint256 executionBase)
     {
         uint256 reservedBase = buyTrade.reservedBase;
-        uint256 normalizedEffectiveQuote = buyTrade.effectiveQuote.mul(_quoteDecimalMultiplier);
-        uint256 normalizedReservedQuote = reservedBase.multiplyDecimal(nav);
-        if (normalizedEffectiveQuote < normalizedReservedQuote) {
+        uint256 reservedQuote = reservedBase.multiplyDecimal(nav);
+        uint256 effectiveQuote = buyTrade.effectiveQuote;
+        if (effectiveQuote < reservedQuote) {
             // Reserved base is enough to execute the trade.
             // nav is always positive here
-            return (buyTrade.frozenQuote, normalizedEffectiveQuote.divideDecimal(nav));
+            return (buyTrade.frozenQuote, effectiveQuote.divideDecimal(nav));
         } else {
             // Reserved base is not enough. The trade is partially executed
             // and a fraction of frozenQuote is returned to the taker.
-            return (
-                buyTrade.frozenQuote.mul(normalizedReservedQuote).div(normalizedEffectiveQuote),
-                reservedBase
-            );
+            return (buyTrade.frozenQuote.mul(reservedQuote).div(effectiveQuote), reservedBase);
         }
     }
 
@@ -1104,23 +1095,45 @@ contract Exchange is ExchangeRoles, Staking {
     /// @return executionBase Real amount of base asset waiting for settlment
     function _sellTradeResult(PendingSellTrade memory sellTrade, uint256 nav)
         internal
-        view
+        pure
         returns (uint256 executionQuote, uint256 executionBase)
     {
         uint256 reservedQuote = sellTrade.reservedQuote;
-        uint256 normalizedEffectiveQuote = sellTrade.effectiveBase.multiplyDecimal(nav);
-        uint256 normalizedReservedQuote = reservedQuote.mul(_quoteDecimalMultiplier);
-        if (normalizedEffectiveQuote < normalizedReservedQuote) {
+        uint256 effectiveQuote = sellTrade.effectiveBase.multiplyDecimal(nav);
+        if (effectiveQuote < reservedQuote) {
             // Reserved quote is enough to execute the trade.
-            return (normalizedEffectiveQuote.div(_quoteDecimalMultiplier), sellTrade.frozenBase);
+            return (effectiveQuote, sellTrade.frozenBase);
         } else {
             // Reserved quote is not enough. The trade is partially executed
             // and a fraction of frozenBase is returned to the taker.
-            return (
-                reservedQuote,
-                sellTrade.frozenBase.mul(normalizedReservedQuote).div(normalizedEffectiveQuote)
-            );
+            return (reservedQuote, sellTrade.frozenBase.mul(reservedQuote).div(effectiveQuote));
         }
+    }
+
+    /// @dev Transfer quote asset to an account. Transfered amount is rounded down.
+    /// @param account Recipient address
+    /// @param amount Amount to transfer with 18 decimal places
+    function _transferQuote(address account, uint256 amount) private {
+        uint256 amountToTransfer = amount / _quoteDecimalMultiplier;
+        if (amountToTransfer == 0) {
+            return;
+        }
+        require(
+            IERC20(quoteAssetAddress).transfer(account, amountToTransfer),
+            "Failed to transfer quote asset"
+        );
+    }
+
+    /// @dev Transfer quote asset from an account. Transfered amount is rounded up.
+    /// @param account Sender address
+    /// @param amount Amount to transfer with 18 decimal places
+    function _transferQuoteFrom(address account, uint256 amount) private {
+        uint256 amountToTransfer =
+            amount.add(_quoteDecimalMultiplier - 1) / _quoteDecimalMultiplier;
+        require(
+            IERC20(quoteAssetAddress).transferFrom(account, address(this), amountToTransfer),
+            "Failed to transfer quote asset from account"
+        );
     }
 
     modifier onlyActive() {
