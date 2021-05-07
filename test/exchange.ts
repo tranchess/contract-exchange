@@ -704,6 +704,93 @@ describe("Exchange", function () {
         // TODO skip expired maker, last order is skipped
     });
 
+    describe("cancelAsk()", function () {
+        let outerFixture: Fixture<FixtureData>;
+
+        before(function () {
+            // Override fixture
+            outerFixture = currentFixture;
+            currentFixture = askOrderBookFixture;
+        });
+
+        after(function () {
+            // Restore fixture
+            currentFixture = outerFixture;
+        });
+
+        it("Should revert when canceling non-existent order", async function () {
+            await expect(
+                exchange.connect(user2).cancelAsk(0, TRANCHE_P, 41, 99)
+            ).to.be.revertedWith("Maker address mismatched");
+            await expect(
+                exchange.connect(user2).cancelAsk(99, TRANCHE_P, 41, 1)
+            ).to.be.revertedWith("Maker address mismatched");
+        });
+
+        it("Should revert when canceling other's order", async function () {
+            await expect(exchange.cancelAsk(0, TRANCHE_P, 41, 1)).to.be.revertedWith(
+                "Maker address mismatched"
+            );
+        });
+
+        it("Should revert when canceling completely filled order", async function () {
+            await fund.mock.extrapolateNav.returns(parseEther("1"), 0, 0);
+            await exchange.buyP(0, 42, ASK_1_PD_0);
+            await expect(exchange.connect(user2).cancelAsk(0, TRANCHE_P, 41, 1)).to.be.revertedWith(
+                "Maker address mismatched"
+            );
+        });
+
+        it("Should delete the canceled order", async function () {
+            await exchange.connect(user2).cancelAsk(0, TRANCHE_P, 41, 1);
+            const order = await exchange.getAskOrder(0, TRANCHE_P, 41, 1);
+            expect(order.maker).to.equal(ethers.constants.AddressZero);
+            expect(order.amount).to.equal(0);
+            expect(order.fillable).to.equal(0);
+        });
+
+        it("Should update balance", async function () {
+            // Partially fill the order
+            await fund.mock.extrapolateNav.returns(parseEther("1"), 0, 0);
+            await exchange.buyP(0, 42, ASK_1_PD_0.div(2));
+            const matchedShares = ASK_1_PD_0.div(2).mul(MAKER_RESERVE_BPS).div(10000);
+
+            const oldAvailable = await exchange.availableBalanceOf(TRANCHE_P, addr2);
+            await exchange.connect(user2).cancelAsk(0, TRANCHE_P, 41, 1);
+            expect(await exchange.availableBalanceOf(TRANCHE_P, addr2)).to.equal(
+                oldAvailable.add(ASK_1_PD_0).sub(matchedShares)
+            );
+        });
+
+        it("Should emit event", async function () {
+            // Partially fill the order
+            await fund.mock.extrapolateNav.returns(parseEther("1"), 0, 0);
+            await exchange.buyP(0, 42, ASK_1_PD_0.div(2));
+            const matchedUsdc = ASK_1_PD_0.div(2).mul(MAKER_RESERVE_BPS).div(10000);
+
+            await expect(exchange.connect(user2).cancelAsk(0, TRANCHE_P, 41, 1))
+                .to.emit(exchange, "AskOrderCanceled")
+                .withArgs(addr2, TRANCHE_P, 41, ASK_1_PD_0, 0, 1, ASK_1_PD_0.sub(matchedUsdc));
+        });
+
+        it("Should update best ask", async function () {
+            await exchange.connect(user2).cancelAsk(0, TRANCHE_P, 45, 1);
+            expect(await exchange.bestAsks(0, TRANCHE_P)).to.equal(41);
+
+            await exchange.connect(user2).cancelAsk(0, TRANCHE_P, 41, 1);
+            expect(await exchange.bestAsks(0, TRANCHE_P)).to.equal(45);
+
+            await exchange.connect(user3).cancelAsk(0, TRANCHE_P, 45, 2);
+            expect(await exchange.bestAsks(0, TRANCHE_P)).to.equal(45);
+
+            await exchange.connect(user2).cancelAsk(0, TRANCHE_P, 45, 3);
+            expect(await exchange.bestAsks(0, TRANCHE_P)).to.equal(49);
+
+            await exchange.connect(user3).cancelAsk(0, TRANCHE_P, 49, 1);
+            expect(await exchange.bestAsks(0, TRANCHE_P)).to.equal(82);
+        });
+    });
+
     describe("sellP()", function () {
         let outerFixture: Fixture<FixtureData>;
 
@@ -953,5 +1040,91 @@ describe("Exchange", function () {
         });
 
         // TODO skip expired maker, last order is skipped
+    });
+
+    describe("cancelBid()", function () {
+        let outerFixture: Fixture<FixtureData>;
+
+        before(function () {
+            // Override fixture
+            outerFixture = currentFixture;
+            currentFixture = bidOrderBookFixture;
+        });
+
+        after(function () {
+            // Restore fixture
+            currentFixture = outerFixture;
+        });
+
+        it("Should revert when canceling non-existent order", async function () {
+            await expect(
+                exchange.connect(user2).cancelBid(0, TRANCHE_P, 41, 99)
+            ).to.be.revertedWith("Maker address mismatched");
+            await expect(
+                exchange.connect(user2).cancelBid(99, TRANCHE_P, 41, 1)
+            ).to.be.revertedWith("Maker address mismatched");
+        });
+
+        it("Should revert when canceling other's order", async function () {
+            await expect(exchange.cancelBid(0, TRANCHE_P, 41, 1)).to.be.revertedWith(
+                "Maker address mismatched"
+            );
+        });
+
+        it("Should revert when canceling completely filled order", async function () {
+            await fund.mock.extrapolateNav.returns(parseEther("1"), 0, 0);
+            await exchange.sellP(0, 40, BID_1_PD_0);
+            await expect(exchange.connect(user2).cancelBid(0, TRANCHE_P, 41, 1)).to.be.revertedWith(
+                "Maker address mismatched"
+            );
+        });
+
+        it("Should delete the canceled order", async function () {
+            await exchange.connect(user2).cancelBid(0, TRANCHE_P, 41, 1);
+            const order = await exchange.getBidOrder(0, TRANCHE_P, 41, 1);
+            expect(order.maker).to.equal(ethers.constants.AddressZero);
+            expect(order.amount).to.equal(0);
+            expect(order.fillable).to.equal(0);
+        });
+
+        it("Should update balance", async function () {
+            // Partially fill the order
+            await fund.mock.extrapolateNav.returns(parseEther("1"), 0, 0);
+            await exchange.sellP(0, 40, BID_1_PD_0.div(2));
+            const matchedUsdc = BID_1_PD_0.div(2).mul(MAKER_RESERVE_BPS).div(10000);
+
+            const returnedUsdc = BID_1_PD_0.sub(matchedUsdc).div(USDC_TO_ETHER);
+            await expect(() =>
+                exchange.connect(user2).cancelBid(0, TRANCHE_P, 41, 1)
+            ).to.changeTokenBalances(usdc, [user2, exchange], [returnedUsdc, returnedUsdc.mul(-1)]);
+        });
+
+        it("Should emit event", async function () {
+            // Partially fill the order
+            await fund.mock.extrapolateNav.returns(parseEther("1"), 0, 0);
+            await exchange.sellP(0, 40, BID_1_PD_0.div(2));
+            const matchedUsdc = BID_1_PD_0.div(2).mul(MAKER_RESERVE_BPS).div(10000);
+
+            await expect(exchange.connect(user2).cancelBid(0, TRANCHE_P, 41, 1))
+                .to.emit(exchange, "BidOrderCanceled")
+                .withArgs(addr2, TRANCHE_P, 41, BID_1_PD_0, 0, 1, BID_1_PD_0.sub(matchedUsdc));
+        });
+
+        it("Should update best bid", async function () {
+            await exchange.connect(user2).cancelBid(0, TRANCHE_P, 37, 2);
+            expect(await exchange.bestBids(0, TRANCHE_P)).to.equal(41);
+
+            await exchange.connect(user2).cancelBid(0, TRANCHE_P, 41, 1);
+            expect(await exchange.bestBids(0, TRANCHE_P)).to.equal(37);
+
+            await exchange.connect(user3).cancelBid(0, TRANCHE_P, 37, 1);
+            expect(await exchange.bestBids(0, TRANCHE_P)).to.equal(37);
+
+            await exchange.connect(user2).cancelBid(0, TRANCHE_P, 37, 3);
+            expect(await exchange.bestBids(0, TRANCHE_P)).to.equal(33);
+
+            await exchange.connect(user3).cancelBid(0, TRANCHE_P, 33, 1);
+            expect(await exchange.bestBids(0, TRANCHE_P)).to.equal(0);
+        });
     });
 });
