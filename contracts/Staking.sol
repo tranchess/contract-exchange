@@ -484,7 +484,7 @@ abstract contract Staking is ITrancheIndex {
         if (version < conversionSize) {
             conversionTimestamp = fund.getConversionTimestamp(version);
         } else {
-            conversionTimestamp = 2**256 - 1;
+            conversionTimestamp = type(uint256).max;
         }
         uint256 futureEpoch = _futureEpoch;
         uint256 rate = _rate;
@@ -524,7 +524,7 @@ abstract contract Staking is ITrancheIndex {
                 if (version < conversionSize) {
                     conversionTimestamp = fund.getConversionTimestamp(version);
                 } else {
-                    conversionTimestamp = 2**256 - 1;
+                    conversionTimestamp = type(uint256).max;
                 }
             }
             if (endTimestamp == futureEpoch) {
@@ -593,7 +593,11 @@ abstract contract Staking is ITrancheIndex {
         uint256 rewards = _claimableRewards[account];
         for (uint256 i = oldVersion; i < targetVersion; i++) {
             uint256 weight =
-                rewardWeight(availableP + lockedP, availableA + lockedA, availableB + lockedB);
+                rewardWeight(
+                    availableP.add(lockedP),
+                    availableA.add(lockedA),
+                    availableB.add(lockedB)
+                );
             rewards = rewards.add(
                 weight.multiplyDecimalRoundPrecise(_historyIntegrals[i].sub(userIntegral))
             );
@@ -611,7 +615,7 @@ abstract contract Staking is ITrancheIndex {
             userIntegral = 0;
         }
         uint256 weight =
-            rewardWeight(availableP + lockedP, availableA + lockedA, availableB + lockedB);
+            rewardWeight(availableP.add(lockedP), availableA.add(lockedA), availableB.add(lockedB));
         rewards = rewards.add(weight.multiplyDecimalRoundPrecise(integral.sub(userIntegral)));
         address account_ = account; // Fix the "stack too deep" error
         _claimableRewards[account_] = rewards;

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.6.10 <0.8.0;
 
-import "@openzeppelin/contracts/math/SafeMath.sol";
-
 /// @notice A maker order
 /// @param prev Index of the previous order at the same premium-discount level,
 ///             or zero if this is the first one
@@ -42,8 +40,6 @@ struct OrderQueue {
 /// @notice Order queue struct and implementation using doubly linked list
 /// @author Tranchess
 library LibOrderQueue {
-    using SafeMath for uint256;
-
     function isEmpty(OrderQueue storage queue) internal view returns (bool) {
         return queue.head == 0;
     }
