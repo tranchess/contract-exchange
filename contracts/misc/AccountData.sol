@@ -104,19 +104,24 @@ contract AccountData is ITrancheIndex {
     function getPendingTrades(
         address exchangeAddress,
         address account,
-        uint256 epoch
+        uint256[] memory epochs
     )
         external
         view
         returns (
-            PendingTrade memory pendingTradeP,
-            PendingTrade memory pendingTradeA,
-            PendingTrade memory pendingTradeB
+            PendingTrade[] memory pendingTradeP,
+            PendingTrade[] memory pendingTradeA,
+            PendingTrade[] memory pendingTradeB
         )
     {
         IExchange exchange = IExchange(exchangeAddress);
-        pendingTradeP = exchange.pendingTrades(account, TRANCHE_P, epoch);
-        pendingTradeA = exchange.pendingTrades(account, TRANCHE_A, epoch);
-        pendingTradeB = exchange.pendingTrades(account, TRANCHE_B, epoch);
+        pendingTradeP = new PendingTrade[](epochs.length);
+        pendingTradeA = new PendingTrade[](epochs.length);
+        pendingTradeB = new PendingTrade[](epochs.length);
+        for (uint256 i = 0; i < epochs.length; i++) {
+            pendingTradeP[i] = exchange.pendingTrades(account, TRANCHE_P, epochs[i]);
+            pendingTradeA[i] = exchange.pendingTrades(account, TRANCHE_A, epochs[i]);
+            pendingTradeB[i] = exchange.pendingTrades(account, TRANCHE_B, epochs[i]);
+        }
     }
 }
