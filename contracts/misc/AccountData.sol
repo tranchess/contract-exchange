@@ -3,6 +3,8 @@ pragma solidity >=0.6.10 <0.8.0;
 pragma experimental ABIEncoderV2;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+import {PendingTrade} from "../libs/LibPendingTrade.sol";
 import "../interfaces/IFund.sol";
 import "../interfaces/ITrancheIndex.sol";
 
@@ -14,6 +16,14 @@ interface IExchange {
     function availableBalanceOf(uint256 tranche, address account) external view returns (uint256);
 
     function lockedBalanceOf(uint256 tranche, address account) external view returns (uint256);
+
+    function pendingTrades(
+        address account,
+        uint256 tranche,
+        uint256 epoch
+    ) external view returns (PendingTrade memory);
+
+    function totalSupply(uint256 tranche) external view returns (uint256);
 
     function claimableRewards(address account) external returns (uint256);
 }
@@ -74,5 +84,39 @@ contract AccountData is ITrancheIndex {
         accountDetails.underlying = IERC20(IFund(fund).tokenUnderlying()).balanceOf(account);
         accountDetails.quote = IERC20(quoteAssetAddress).balanceOf(account);
         accountDetails.chess = IERC20(chess).balanceOf(account);
+    }
+
+    function getTotalDeposits(address exchangeAddress)
+        external
+        view
+        returns (
+            uint256 totalDepositedP,
+            uint256 totalDepositedA,
+            uint256 totalDepositedB
+        )
+    {
+        IExchange exchange = IExchange(exchangeAddress);
+        totalDepositedP = exchange.totalSupply(TRANCHE_P);
+        totalDepositedA = exchange.totalSupply(TRANCHE_A);
+        totalDepositedB = exchange.totalSupply(TRANCHE_B);
+    }
+
+    function getPendingTrades(
+        address exchangeAddress,
+        address account,
+        uint256 epoch
+    )
+        external
+        view
+        returns (
+            PendingTrade memory pendingTradeP,
+            PendingTrade memory pendingTradeA,
+            PendingTrade memory pendingTradeB
+        )
+    {
+        IExchange exchange = IExchange(exchangeAddress);
+        pendingTradeP = exchange.pendingTrades(account, TRANCHE_P, epoch);
+        pendingTradeA = exchange.pendingTrades(account, TRANCHE_A, epoch);
+        pendingTradeB = exchange.pendingTrades(account, TRANCHE_B, epoch);
     }
 }
