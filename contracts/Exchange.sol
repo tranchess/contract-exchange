@@ -594,7 +594,7 @@ contract Exchange is ExchangeRoles, Staking {
         )
     {
         (uint256 estimatedNavP, uint256 estimatedNavA, uint256 estimatedNavB) =
-            estimateNavs(epoch + EPOCH);
+            estimateNavs(epoch.add(EPOCH));
 
         uint256 quoteAmountP;
         uint256 quoteAmountA;
@@ -611,7 +611,7 @@ contract Exchange is ExchangeRoles, Staking {
             sharesB,
             conversionID
         );
-        quoteAmount = quoteAmountP + quoteAmountA + quoteAmountB;
+        quoteAmount = quoteAmountP.add(quoteAmountA).add(quoteAmountB);
         _transferQuote(msg.sender, quoteAmount);
 
         emit MakerSettled(msg.sender, epoch, sharesP, sharesA, sharesB, quoteAmount);
@@ -634,7 +634,7 @@ contract Exchange is ExchangeRoles, Staking {
         )
     {
         (uint256 estimatedNavP, uint256 estimatedNavA, uint256 estimatedNavB) =
-            estimateNavs(epoch + EPOCH);
+            estimateNavs(epoch.add(EPOCH));
 
         uint256 quoteAmountP;
         uint256 quoteAmountA;
@@ -651,7 +651,7 @@ contract Exchange is ExchangeRoles, Staking {
             sharesB,
             conversionID
         );
-        quoteAmount = quoteAmountP + quoteAmountA + quoteAmountB;
+        quoteAmount = quoteAmountP.add(quoteAmountA).add(quoteAmountB);
         _transferQuote(msg.sender, quoteAmount);
 
         emit TakerSettled(msg.sender, epoch, sharesP, sharesA, sharesB, quoteAmount);
@@ -998,10 +998,10 @@ contract Exchange is ExchangeRoles, Staking {
         if (takerBuy.frozenQuote > 0) {
             (uint256 executionQuote, uint256 executionBase) =
                 _buyTradeResult(takerBuy, estimatedNav);
-            baseAmount += executionBase;
+            baseAmount = baseAmount.add(executionBase);
 
             uint256 refundQuote = takerBuy.frozenQuote.sub(executionQuote);
-            quoteAmount += refundQuote;
+            quoteAmount = quoteAmount.add(refundQuote);
 
             // Delete by zeroing it out
             delete pendingTrade.takerBuy;
@@ -1012,10 +1012,10 @@ contract Exchange is ExchangeRoles, Staking {
         if (takerSell.frozenBase > 0) {
             (uint256 executionQuote, uint256 executionBase) =
                 _sellTradeResult(takerSell, estimatedNav);
-            quoteAmount += executionQuote;
+            quoteAmount = quoteAmount.add(executionQuote);
 
             uint256 refundBase = takerSell.frozenBase.sub(executionBase);
-            baseAmount += refundBase;
+            baseAmount = baseAmount.add(refundBase);
 
             // Delete by zeroing it out
             delete pendingTrade.takerSell;
@@ -1040,10 +1040,10 @@ contract Exchange is ExchangeRoles, Staking {
         if (makerBuy.frozenBase > 0) {
             (uint256 executionQuote, uint256 executionBase) =
                 _sellTradeResult(makerBuy, estimatedNav);
-            baseAmount += executionBase;
+            baseAmount = baseAmount.add(executionBase);
 
             uint256 refundQuote = makerBuy.reservedQuote.sub(executionQuote);
-            quoteAmount += refundQuote;
+            quoteAmount = quoteAmount.add(refundQuote);
 
             // Delete by zeroing it out
             delete pendingTrade.makerBuy;
@@ -1054,10 +1054,10 @@ contract Exchange is ExchangeRoles, Staking {
         if (makerSell.frozenQuote > 0) {
             (uint256 executionQuote, uint256 executionBase) =
                 _buyTradeResult(makerSell, estimatedNav);
-            quoteAmount += executionQuote;
+            quoteAmount = quoteAmount.add(executionQuote);
 
             uint256 refundBase = makerSell.reservedBase.sub(executionBase);
-            baseAmount += refundBase;
+            baseAmount = baseAmount.add(refundBase);
 
             // Delete by zeroing it out
             delete pendingTrade.makerSell;
