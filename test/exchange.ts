@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { BigNumber, Contract, Wallet } from "ethers";
+import { BigNumber, BigNumberish, Contract, Wallet } from "ethers";
 import type { Fixture, MockContract, MockProvider } from "ethereum-waffle";
 import { waffle, ethers } from "hardhat";
 const { loadFixture } = waffle;
@@ -470,7 +470,7 @@ describe("Exchange", function () {
         });
 
         it("Should revert if price is not available", async function () {
-            await twapOracle.mock.getTwap.returns(parseEther("0"));
+            await twapOracle.mock.getTwap.returns(0);
             await expect(exchange.buyP(0, 41, 1)).to.be.revertedWith("Price is not available");
         });
 
@@ -514,7 +514,9 @@ describe("Exchange", function () {
             const buyTxBuilder = () => exchange.buyP(0, 49, matchedUsdc);
 
             beforeEach(async function () {
-                await fund.mock.extrapolateNav.returns(estimatedNav, 0, 0);
+                await fund.mock.extrapolateNav
+                    .withArgs(startEpoch - EPOCH * 2, parseEther("1000"))
+                    .returns(estimatedNav, 0, 0);
             });
 
             it("Should update balance", async function () {
@@ -566,7 +568,9 @@ describe("Exchange", function () {
             const buyTxBuilder = () => exchange.buyP(0, 42, ASK_1_PD_0);
 
             beforeEach(async function () {
-                await fund.mock.extrapolateNav.returns(estimatedNav, 0, 0);
+                await fund.mock.extrapolateNav
+                    .withArgs(startEpoch - EPOCH * 2, parseEther("1000"))
+                    .returns(estimatedNav, 0, 0);
             });
 
             it("Should update balance", async function () {
@@ -640,7 +644,9 @@ describe("Exchange", function () {
             const buyTxBuilder = () => exchange.buyP(0, 49, matchedUsdc);
 
             beforeEach(async function () {
-                await fund.mock.extrapolateNav.returns(parseEther("1"), 0, 0);
+                await fund.mock.extrapolateNav
+                    .withArgs(startEpoch - EPOCH * 2, parseEther("1000"))
+                    .returns(parseEther("1"), 0, 0);
             });
 
             it("Should update balance", async function () {
@@ -811,7 +817,7 @@ describe("Exchange", function () {
         });
 
         it("Should revert if price is not available", async function () {
-            await twapOracle.mock.getTwap.returns(parseEther("0"));
+            await twapOracle.mock.getTwap.returns(0);
             await expect(exchange.sellP(0, 41, 1)).to.be.revertedWith("Price is not available");
         });
 
@@ -854,7 +860,9 @@ describe("Exchange", function () {
             const sellTxBuilder = () => exchange.sellP(0, 33, matchedShares);
 
             beforeEach(async function () {
-                await fund.mock.extrapolateNav.returns(estimatedNav, 0, 0);
+                await fund.mock.extrapolateNav
+                    .withArgs(startEpoch - EPOCH * 2, parseEther("1000"))
+                    .returns(estimatedNav, 0, 0);
             });
 
             it("Should update balance", async function () {
@@ -904,7 +912,9 @@ describe("Exchange", function () {
             const sellTxBuilder = () => exchange.sellP(0, 40, BID_1_PD_0);
 
             beforeEach(async function () {
-                await fund.mock.extrapolateNav.returns(estimatedNav, 0, 0);
+                await fund.mock.extrapolateNav
+                    .withArgs(startEpoch - EPOCH * 2, parseEther("1000"))
+                    .returns(estimatedNav, 0, 0);
             });
 
             it("Should update balance", async function () {
@@ -976,7 +986,9 @@ describe("Exchange", function () {
             const sellTxBuilder = () => exchange.sellP(0, 33, matchedShares);
 
             beforeEach(async function () {
-                await fund.mock.extrapolateNav.returns(parseEther("1"), 0, 0);
+                await fund.mock.extrapolateNav
+                    .withArgs(startEpoch - EPOCH * 2, parseEther("1000"))
+                    .returns(parseEther("1"), 0, 0);
             });
 
             it("Should update balance", async function () {
@@ -1125,6 +1137,238 @@ describe("Exchange", function () {
 
             await exchange.connect(user3).cancelBid(0, TRANCHE_P, 33, 1);
             expect(await exchange.bestBids(0, TRANCHE_P)).to.equal(0);
+        });
+    });
+
+    describe("settleMaker() and settleTaker()", function () {
+        let outerFixture: Fixture<FixtureData>;
+        const frozenUsdcForP = parseEther("1");
+        const reservedP = frozenUsdcForP.mul(MAKER_RESERVE_BPS).div(10000).mul(10).div(11);
+        const frozenUsdcForA = parseEther("2");
+        const reservedA = frozenUsdcForA.mul(MAKER_RESERVE_BPS).div(10000).mul(10).div(11);
+        const frozenB = parseEther("3");
+        const reservedUsdcForB = frozenB.mul(MAKER_RESERVE_BPS).div(10000).mul(9).div(10);
+
+        async function tradeFixture(): Promise<FixtureData> {
+            const f = await loadFixture(deployFixture);
+            const u2 = f.wallets.user2;
+
+            // Order book of all the three tranches
+            // Ask:
+            // +10%   20(user2)
+            // Bid:
+            // -10%   50(user2)
+            await f.exchange.connect(u2).placeAsk(TRANCHE_P, 81, ASK_1_PD_1, 0, 0);
+            await f.exchange.connect(u2).placeAsk(TRANCHE_A, 81, ASK_1_PD_1, 0, 0);
+            await f.exchange.connect(u2).placeAsk(TRANCHE_B, 81, ASK_1_PD_1, 0, 0);
+            await f.exchange.connect(u2).placeBid(TRANCHE_P, 1, BID_1_PD_N1, 0, 0);
+            await f.exchange.connect(u2).placeBid(TRANCHE_A, 1, BID_1_PD_N1, 0, 0);
+            await f.exchange.connect(u2).placeBid(TRANCHE_B, 1, BID_1_PD_N1, 0, 0);
+
+            await f.fund.mock.extrapolateNav
+                .withArgs(f.startEpoch - EPOCH * 2, parseEther("1000"))
+                .returns(parseEther("1"), parseEther("1"), parseEther("1"));
+            // User 1 buys P and A and sells B
+            await f.exchange.buyP(0, 81, frozenUsdcForP);
+            await f.exchange.buyA(0, 81, frozenUsdcForA);
+            await f.exchange.sellB(0, 1, frozenB);
+
+            return f;
+        }
+
+        before(function () {
+            // Override fixture
+            outerFixture = currentFixture;
+            currentFixture = tradeFixture;
+        });
+
+        after(function () {
+            // Restore fixture
+            currentFixture = outerFixture;
+        });
+
+        async function expectSettleResult(
+            settleFuncName: string,
+            user: Wallet,
+            epoch: number,
+            amountP: BigNumberish,
+            amountA: BigNumberish,
+            amountB: BigNumberish,
+            usdcAmount: BigNumberish
+        ) {
+            const result = await exchange.connect(user).callStatic[settleFuncName](epoch);
+            expect(result.sharesP).to.equal(amountP);
+            expect(result.sharesA).to.equal(amountA);
+            expect(result.sharesB).to.equal(amountB);
+            expect(result.quoteAmount).to.equal(usdcAmount);
+
+            const oldP = await exchange.availableBalanceOf(TRANCHE_P, user.address);
+            const oldA = await exchange.availableBalanceOf(TRANCHE_A, user.address);
+            const oldB = await exchange.availableBalanceOf(TRANCHE_B, user.address);
+            await expect(() =>
+                exchange.connect(user)[settleFuncName](epoch)
+            ).to.changeTokenBalances(
+                usdc,
+                [user, exchange],
+                [
+                    result.quoteAmount.div(USDC_TO_ETHER),
+                    result.quoteAmount.div(USDC_TO_ETHER).mul(-1),
+                ]
+            );
+            expect(await exchange.availableBalanceOf(TRANCHE_P, user.address)).to.equal(
+                oldP.add(result.sharesP)
+            );
+            expect(await exchange.availableBalanceOf(TRANCHE_A, user.address)).to.equal(
+                oldA.add(result.sharesA)
+            );
+            expect(await exchange.availableBalanceOf(TRANCHE_B, user.address)).to.equal(
+                oldB.add(result.sharesB)
+            );
+        }
+
+        it("Should revert if price is not available", async function () {
+            await twapOracle.mock.getTwap.withArgs(startEpoch + EPOCH).returns(0);
+            await expect(exchange.settleMaker(startEpoch)).to.be.revertedWith(
+                "Price is not available"
+            );
+            await expect(exchange.settleTaker(startEpoch)).to.be.revertedWith(
+                "Price is not available"
+            );
+        });
+
+        it("Should succeed with no change when settling nothing", async function () {
+            await fund.mock.extrapolateNav.returns(
+                parseEther("1"),
+                parseEther("1"),
+                parseEther("1")
+            );
+            await expect(() =>
+                exchange.connect(user3).settleMaker(startEpoch - EPOCH)
+            ).to.changeTokenBalance(usdc, user3, 0);
+            expect(await exchange.availableBalanceOf(TRANCHE_P, addr3)).to.equal(USER3_P);
+            expect(await exchange.availableBalanceOf(TRANCHE_A, addr3)).to.equal(USER3_A);
+            expect(await exchange.availableBalanceOf(TRANCHE_B, addr3)).to.equal(USER3_B);
+        });
+
+        describe("Settle at exactly the estimated NAV", function () {
+            const settledP = frozenUsdcForP.mul(10).div(11);
+            const settledA = frozenUsdcForA.mul(10).div(11);
+            const settledB = frozenB;
+            const settledUsdcForP = frozenUsdcForP;
+            const settledUsdcForA = frozenUsdcForA;
+            const settledUsdcForB = frozenB.mul(9).div(10);
+
+            beforeEach(async function () {
+                await fund.mock.extrapolateNav.returns(
+                    parseEther("1"),
+                    parseEther("1"),
+                    parseEther("1")
+                );
+            });
+
+            it("SettleTaker()", async function () {
+                await expectSettleResult(
+                    "settleTaker",
+                    user1,
+                    startEpoch,
+                    settledP,
+                    settledA,
+                    0,
+                    settledUsdcForB
+                );
+            });
+
+            it("SettleMaker()", async function () {
+                await expectSettleResult(
+                    "settleMaker",
+                    user2,
+                    startEpoch,
+                    reservedP.sub(settledP),
+                    reservedA.sub(settledA),
+                    settledB,
+                    settledUsdcForP.add(settledUsdcForA).add(reservedUsdcForB).sub(settledUsdcForB)
+                );
+            });
+        });
+
+        describe("Settle at a high price", function () {
+            const navP = parseEther("1.2");
+            const navA = parseEther("1.05");
+            const navB = parseEther("1.35");
+            const settledP = frozenUsdcForP.mul(10).div(11).mul(parseEther("1")).div(navP);
+            const settledA = frozenUsdcForA.mul(10).div(11).mul(parseEther("1")).div(navA);
+            const settledB = reservedUsdcForB.mul(parseEther("1")).div(navB.mul(9).div(10));
+            const settledUsdcForP = frozenUsdcForP;
+            const settledUsdcForA = frozenUsdcForA;
+            const settledUsdcForB = reservedUsdcForB;
+
+            beforeEach(async function () {
+                await fund.mock.extrapolateNav.returns(navP, navA, navB);
+            });
+
+            it("SettleTaker()", async function () {
+                await expectSettleResult(
+                    "settleTaker",
+                    user1,
+                    startEpoch,
+                    settledP,
+                    settledA,
+                    frozenB.sub(settledB),
+                    settledUsdcForB
+                );
+            });
+
+            it("SettleMaker()", async function () {
+                await expectSettleResult(
+                    "settleMaker",
+                    user2,
+                    startEpoch,
+                    reservedP.sub(settledP),
+                    reservedA.sub(settledA),
+                    settledB,
+                    settledUsdcForP.add(settledUsdcForA)
+                );
+            });
+        });
+
+        describe("Settle at a low price", function () {
+            const navP = parseEther("0.8");
+            const navA = parseEther("1.05");
+            const navB = parseEther("0.55");
+            const settledP = reservedP;
+            const settledA = frozenUsdcForA.mul(parseEther("1")).div(navA).mul(10).div(11);
+            const settledB = frozenB;
+            const settledUsdcForP = reservedP.mul(navP).div(parseEther("1")).mul(11).div(10);
+            const settledUsdcForA = frozenUsdcForA;
+            const settledUsdcForB = frozenB.mul(navB).div(parseEther("1")).mul(9).div(10);
+
+            beforeEach(async function () {
+                await fund.mock.extrapolateNav.returns(navP, navA, navB);
+            });
+
+            it("SettleTaker()", async function () {
+                await expectSettleResult(
+                    "settleTaker",
+                    user1,
+                    startEpoch,
+                    settledP,
+                    settledA,
+                    0,
+                    settledUsdcForB.add(frozenUsdcForP).sub(settledUsdcForP)
+                );
+            });
+
+            it("SettleMaker()", async function () {
+                await expectSettleResult(
+                    "settleMaker",
+                    user2,
+                    startEpoch,
+                    0,
+                    reservedA.sub(settledA),
+                    settledB,
+                    settledUsdcForP.add(settledUsdcForA).add(reservedUsdcForB).sub(settledUsdcForB)
+                );
+            });
         });
     });
 });
