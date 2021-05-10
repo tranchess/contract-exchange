@@ -31,9 +31,9 @@ abstract contract Staking is ITrancheIndex {
     uint256 private constant SETTLEMENT_TIME = 14 hours;
     uint256 private constant MAX_ITERATIONS = 500;
 
-    uint256 private constant REWARD_WEIGHT_A = 1;
-    uint256 private constant REWARD_WEIGHT_B = 3;
-    uint256 private constant REWARD_WEIGHT_P = 2;
+    uint256 private constant REWARD_WEIGHT_A = 4;
+    uint256 private constant REWARD_WEIGHT_B = 2;
+    uint256 private constant REWARD_WEIGHT_P = 3;
 
     IFund public immutable fund;
     address public immutable tokenP;
