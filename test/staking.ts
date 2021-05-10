@@ -10,23 +10,23 @@ const WEEK = 7 * 86400;
 const TRANCHE_P = 0;
 const TRANCHE_A = 1;
 const TRANCHE_B = 2;
-const REWARD_WEIGHT_P = 2;
-const REWARD_WEIGHT_A = 1;
-const REWARD_WEIGHT_B = 3;
+const REWARD_WEIGHT_P = 3;
+const REWARD_WEIGHT_A = 4;
+const REWARD_WEIGHT_B = 2;
 
 // Initial balance:
-// User 1: 400 P + 100 A + 200 B
-// User 2:         200 A + 100 B
+// User 1: 400 P + 120 A + 180 B
+// User 2:         180 A + 120 B
 // Reward weight:
-// User 1: 400   +  50   + 300   = 750
-// User 2:         100   + 150   = 250
-// Total : 400   + 150   + 450   = 1000
+// User 1: 400   + 160   + 120   = 680
+// User 2:         240   +  80   = 320
+// Total : 400   + 400   + 200   = 1000
 const USER1_P = parseEther("400");
-const USER1_A = parseEther("100");
-const USER1_B = parseEther("100");
+const USER1_A = parseEther("120");
+const USER1_B = parseEther("180");
 const USER2_P = parseEther("0");
-const USER2_A = parseEther("200");
-const USER2_B = parseEther("200");
+const USER2_A = parseEther("180");
+const USER2_B = parseEther("120");
 const TOTAL_P = USER1_P.add(USER2_P);
 const TOTAL_A = USER1_A.add(USER2_A);
 const TOTAL_B = USER1_B.add(USER2_B);
@@ -412,17 +412,17 @@ describe("Staking", function () {
         it("Should calculate reward weight", async function () {
             expect(await staking.rewardWeight(1000, 0, 0)).to.equal(1000);
             expect(await staking.rewardWeight(0, 1000, 0)).to.equal(
-                (1000 * REWARD_WEIGHT_A) / REWARD_WEIGHT_P
+                BigNumber.from(1000 * REWARD_WEIGHT_A).div(REWARD_WEIGHT_P)
             );
             expect(await staking.rewardWeight(0, 0, 1000)).to.equal(
-                (1000 * REWARD_WEIGHT_B) / REWARD_WEIGHT_P
+                BigNumber.from(1000 * REWARD_WEIGHT_B).div(REWARD_WEIGHT_P)
             );
         });
 
         it("Should round down reward weight", async function () {
-            // Assume weights of (P, A, B) are (2, 1, 3)
-            expect(await staking.rewardWeight(0, 1, 0)).to.equal(0);
-            expect(await staking.rewardWeight(0, 0, 1)).to.equal(1);
+            // Assume weights of (P, A, B) are (3, 4, 2)
+            expect(await staking.rewardWeight(0, 1, 0)).to.equal(1);
+            expect(await staking.rewardWeight(0, 0, 1)).to.equal(0);
             expect(await staking.rewardWeight(0, 1, 1)).to.equal(2);
         });
     });
