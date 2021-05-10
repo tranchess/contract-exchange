@@ -1373,4 +1373,203 @@ describe("Exchange", function () {
             });
         });
     });
+
+    describe("Expired ask order", function () {
+        let outerFixture: Fixture<FixtureData>;
+        const frozenUsdc = parseEther("0.1");
+        const reservedB = frozenUsdc.mul(11).div(10);
+
+        async function expiredAskOrderFixture(): Promise<FixtureData> {
+            const f = await loadFixture(deployFixture);
+            const u2 = f.wallets.user2;
+            const u3 = f.wallets.user3;
+            await f.votingEscrow.mock.getTimestampDropBelow
+                .withArgs(u3.address, MAKER_REQUIREMENT)
+                .returns(f.startEpoch + EPOCH * 9.5);
+            await f.exchange.connect(u3).applyForMaker();
+            await f.exchange.connect(u3).placeAsk(TRANCHE_B, 41, parseEther("1"), 0, 0);
+            await f.exchange.connect(u2).placeAsk(TRANCHE_B, 41, parseEther("1"), 0, 0);
+            await f.exchange.connect(u3).placeAsk(TRANCHE_B, 41, parseEther("1"), 0, 0);
+            await f.fund.mock.extrapolateNav.returns(0, 0, parseEther("1"));
+            // Buy something before user3's orders expire
+            advanceBlockAtTime(f.startEpoch + EPOCH * 9);
+            await f.exchange.buyB(0, 41, frozenUsdc);
+            // Buy something in the same epoch after user3's orders expire
+            advanceBlockAtTime(f.startEpoch + EPOCH * 9.5);
+            await f.exchange.buyB(0, 41, 100);
+            return f;
+        }
+
+        before(function () {
+            // Override fixture
+            outerFixture = currentFixture;
+            currentFixture = expiredAskOrderFixture;
+        });
+
+        after(function () {
+            // Restore fixture
+            currentFixture = outerFixture;
+        });
+
+        it("Should skip expired order", async function () {
+            expect(await exchange.isMaker(addr3)).to.equal(false);
+            expect((await exchange.asks(0, TRANCHE_B, 41)).head).to.equal(2);
+            const user3Trade = await exchange.pendingTrades(
+                addr3,
+                TRANCHE_B,
+                startEpoch + EPOCH * 10
+            );
+            expect(user3Trade.makerSell.reservedBase).to.equal(reservedB);
+        });
+
+        it("Should not match skipped order even after maker applying again", async function () {
+            await votingEscrow.mock.getTimestampDropBelow
+                .withArgs(addr3, MAKER_REQUIREMENT)
+                .returns(startEpoch + EPOCH * 19);
+            await exchange.connect(user3).applyForMaker();
+            expect(await exchange.isMaker(addr3)).to.equal(true);
+
+            // User3's order at index 1 has been skipped and cannot be matched forever.
+            await exchange.buyB(0, 41, 300);
+            expect((await exchange.asks(0, TRANCHE_B, 41)).head).to.equal(2);
+            const user3Trade = await exchange.pendingTrades(
+                addr3,
+                TRANCHE_B,
+                startEpoch + EPOCH * 10
+            );
+            expect(user3Trade.makerSell.reservedBase).to.equal(reservedB);
+        });
+
+        it("Should match order that was expired but not skipped", async function () {
+            await votingEscrow.mock.getTimestampDropBelow
+                .withArgs(addr3, MAKER_REQUIREMENT)
+                .returns(startEpoch + EPOCH * 20);
+            await exchange.connect(user3).applyForMaker();
+            expect(await exchange.isMaker(addr3)).to.equal(true);
+
+            // User3's order at index 3 can be matched even if it was expired
+            // for a short period of time.
+            await exchange.buyB(0, 41, parseEther("100"));
+            expect(await exchange.bestAsks(0, TRANCHE_B)).to.equal(82);
+            const user3Trade = await exchange.pendingTrades(
+                addr3,
+                TRANCHE_B,
+                startEpoch + EPOCH * 10
+            );
+            expect(user3Trade.makerSell.reservedBase).to.equal(reservedB.add(parseEther("1")));
+        });
+
+        it("Should cancel skipped order", async function () {
+            const oldB = await exchange.availableBalanceOf(TRANCHE_B, addr3);
+            await exchange.connect(user3).cancelAsk(0, TRANCHE_B, 41, 1);
+            expect(await exchange.availableBalanceOf(TRANCHE_B, addr3)).to.equal(
+                oldB.add(parseEther("1").sub(reservedB))
+            );
+            const order = await exchange.getAskOrder(0, TRANCHE_B, 41, 1);
+            expect(order.maker).to.equal(ethers.constants.AddressZero);
+            expect(order.amount).to.equal(0);
+            expect(order.fillable).to.equal(0);
+        });
+    });
+
+    describe("Expired bid order", function () {
+        let outerFixture: Fixture<FixtureData>;
+        const frozenA = parseEther("0.1");
+        const reservedUsdc = frozenA.mul(11).div(10);
+
+        async function expiredBidOrderFixture(): Promise<FixtureData> {
+            const f = await loadFixture(deployFixture);
+            const u2 = f.wallets.user2;
+            const u3 = f.wallets.user3;
+            await f.votingEscrow.mock.getTimestampDropBelow
+                .withArgs(u3.address, MAKER_REQUIREMENT)
+                .returns(f.startEpoch + EPOCH * 9.5);
+            await f.exchange.connect(u3).applyForMaker();
+            await f.exchange.connect(u3).placeBid(TRANCHE_A, 41, parseEther("1"), 0, 0);
+            await f.exchange.connect(u2).placeBid(TRANCHE_A, 41, parseEther("1"), 0, 0);
+            await f.exchange.connect(u3).placeBid(TRANCHE_A, 41, parseEther("1"), 0, 0);
+            await f.fund.mock.extrapolateNav.returns(0, parseEther("1"), 0);
+            // Sell something before user3's orders expire
+            advanceBlockAtTime(f.startEpoch + EPOCH * 9);
+            await f.exchange.sellA(0, 41, frozenA);
+            // Sell something in the same epoch after user3's orders expire
+            advanceBlockAtTime(f.startEpoch + EPOCH * 9.5);
+            await f.exchange.sellA(0, 41, 100);
+            return f;
+        }
+
+        before(function () {
+            // Override fixture
+            outerFixture = currentFixture;
+            currentFixture = expiredBidOrderFixture;
+        });
+
+        after(function () {
+            // Restore fixture
+            currentFixture = outerFixture;
+        });
+
+        it("Should skip expired order", async function () {
+            expect(await exchange.isMaker(addr3)).to.equal(false);
+            expect((await exchange.bids(0, TRANCHE_A, 41)).head).to.equal(2);
+            const user3Trade = await exchange.pendingTrades(
+                addr3,
+                TRANCHE_A,
+                startEpoch + EPOCH * 10
+            );
+            expect(user3Trade.makerBuy.reservedQuote).to.equal(reservedUsdc);
+        });
+
+        it("Should not match skipped order even after maker applying again", async function () {
+            await votingEscrow.mock.getTimestampDropBelow
+                .withArgs(addr3, MAKER_REQUIREMENT)
+                .returns(startEpoch + EPOCH * 19);
+            await exchange.connect(user3).applyForMaker();
+            expect(await exchange.isMaker(addr3)).to.equal(true);
+
+            // User3's order at index 1 has been skipped and cannot be matched forever.
+            await exchange.sellA(0, 41, 300);
+            expect((await exchange.bids(0, TRANCHE_A, 41)).head).to.equal(2);
+            const user3Trade = await exchange.pendingTrades(
+                addr3,
+                TRANCHE_A,
+                startEpoch + EPOCH * 10
+            );
+            expect(user3Trade.makerBuy.reservedQuote).to.equal(reservedUsdc);
+        });
+
+        it("Should match order that was expired but not skipped", async function () {
+            await votingEscrow.mock.getTimestampDropBelow
+                .withArgs(addr3, MAKER_REQUIREMENT)
+                .returns(startEpoch + EPOCH * 20);
+            await exchange.connect(user3).applyForMaker();
+            expect(await exchange.isMaker(addr3)).to.equal(true);
+
+            // User3's order at index 3 can be matched even if it was expired
+            // for a short period of time.
+            await exchange.sellA(0, 41, parseEther("100"));
+            expect(await exchange.bestBids(0, TRANCHE_A)).to.equal(0);
+            const user3Trade = await exchange.pendingTrades(
+                addr3,
+                TRANCHE_A,
+                startEpoch + EPOCH * 10
+            );
+            expect(user3Trade.makerBuy.reservedQuote).to.equal(reservedUsdc.add(parseEther("1")));
+        });
+
+        it("Should cancel skipped order", async function () {
+            const fillableUsdc = parseEther("1").sub(reservedUsdc);
+            await expect(() =>
+                exchange.connect(user3).cancelBid(0, TRANCHE_A, 41, 1)
+            ).to.changeTokenBalances(
+                usdc,
+                [user3, exchange],
+                [fillableUsdc.div(USDC_TO_ETHER), fillableUsdc.div(USDC_TO_ETHER).mul(-1)]
+            );
+            const order = await exchange.getBidOrder(0, TRANCHE_A, 41, 1);
+            expect(order.maker).to.equal(ethers.constants.AddressZero);
+            expect(order.amount).to.equal(0);
+            expect(order.fillable).to.equal(0);
+        });
+    });
 });
