@@ -153,13 +153,14 @@ describe("Exchange", function () {
         await usdc.connect(user2).approve(exchange.address, USER2_USDC.div(USDC_TO_ETHER));
         await usdc.connect(user3).approve(exchange.address, USER3_USDC.div(USDC_TO_ETHER));
 
-        await votingEscrow.mock.getTimestampDropBelow.returns(startEpoch + EPOCH * 500);
+        await votingEscrow.mock.getTimestampDropBelow
+            .withArgs(user1.address, MAKER_REQUIREMENT)
+            .returns(startEpoch + EPOCH * 500);
         await exchange.connect(user1).applyForMaker();
-        await votingEscrow.mock.getTimestampDropBelow.returns(startEpoch + EPOCH * 1000);
+        await votingEscrow.mock.getTimestampDropBelow
+            .withArgs(user2.address, MAKER_REQUIREMENT)
+            .returns(startEpoch + EPOCH * 1000);
         await exchange.connect(user2).applyForMaker();
-        await votingEscrow.mock.getTimestampDropBelow.revertsWithReason(
-            "Mock on the method is not initialized"
-        );
 
         return {
             wallets: { user1, user2, user3, owner },
@@ -406,11 +407,10 @@ describe("Exchange", function () {
         const f = await loadFixture(deployFixture);
         const u2 = f.wallets.user2;
         const u3 = f.wallets.user3;
-        await f.votingEscrow.mock.getTimestampDropBelow.returns(f.startEpoch + EPOCH * 1000);
+        await f.votingEscrow.mock.getTimestampDropBelow
+            .withArgs(u3.address, MAKER_REQUIREMENT)
+            .returns(f.startEpoch + EPOCH * 1000);
         await f.exchange.connect(u3).applyForMaker();
-        await f.votingEscrow.mock.getTimestampDropBelow.revertsWithReason(
-            "Mock on the method is not initialized"
-        );
 
         // Order book of Share P
         // Ask:
@@ -430,7 +430,9 @@ describe("Exchange", function () {
         const f = await loadFixture(deployFixture);
         const u2 = f.wallets.user2;
         const u3 = f.wallets.user3;
-        await f.votingEscrow.mock.getTimestampDropBelow.returns(f.startEpoch + EPOCH * 1000);
+        await f.votingEscrow.mock.getTimestampDropBelow
+            .withArgs(u3.address, MAKER_REQUIREMENT)
+            .returns(f.startEpoch + EPOCH * 1000);
         await f.exchange.connect(u3).applyForMaker();
         await f.votingEscrow.mock.getTimestampDropBelow.revertsWithReason(
             "Mock on the method is not initialized"
