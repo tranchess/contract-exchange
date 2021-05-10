@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { BigNumber, Contract, Wallet } from "ethers";
+import { BigNumber, BigNumberish, Contract, Wallet } from "ethers";
 import type { Fixture, MockContract, MockProvider } from "ethereum-waffle";
 import { waffle, ethers } from "hardhat";
 const { loadFixture } = waffle;
@@ -153,13 +153,14 @@ describe("Exchange", function () {
         await usdc.connect(user2).approve(exchange.address, USER2_USDC.div(USDC_TO_ETHER));
         await usdc.connect(user3).approve(exchange.address, USER3_USDC.div(USDC_TO_ETHER));
 
-        await votingEscrow.mock.getTimestampDropBelow.returns(startEpoch + EPOCH * 500);
+        await votingEscrow.mock.getTimestampDropBelow
+            .withArgs(user1.address, MAKER_REQUIREMENT)
+            .returns(startEpoch + EPOCH * 500);
         await exchange.connect(user1).applyForMaker();
-        await votingEscrow.mock.getTimestampDropBelow.returns(startEpoch + EPOCH * 1000);
+        await votingEscrow.mock.getTimestampDropBelow
+            .withArgs(user2.address, MAKER_REQUIREMENT)
+            .returns(startEpoch + EPOCH * 1000);
         await exchange.connect(user2).applyForMaker();
-        await votingEscrow.mock.getTimestampDropBelow.revertsWithReason(
-            "Mock on the method is not initialized"
-        );
 
         return {
             wallets: { user1, user2, user3, owner },
@@ -406,11 +407,10 @@ describe("Exchange", function () {
         const f = await loadFixture(deployFixture);
         const u2 = f.wallets.user2;
         const u3 = f.wallets.user3;
-        await f.votingEscrow.mock.getTimestampDropBelow.returns(f.startEpoch + EPOCH * 1000);
+        await f.votingEscrow.mock.getTimestampDropBelow
+            .withArgs(u3.address, MAKER_REQUIREMENT)
+            .returns(f.startEpoch + EPOCH * 1000);
         await f.exchange.connect(u3).applyForMaker();
-        await f.votingEscrow.mock.getTimestampDropBelow.revertsWithReason(
-            "Mock on the method is not initialized"
-        );
 
         // Order book of Share P
         // Ask:
@@ -430,7 +430,9 @@ describe("Exchange", function () {
         const f = await loadFixture(deployFixture);
         const u2 = f.wallets.user2;
         const u3 = f.wallets.user3;
-        await f.votingEscrow.mock.getTimestampDropBelow.returns(f.startEpoch + EPOCH * 1000);
+        await f.votingEscrow.mock.getTimestampDropBelow
+            .withArgs(u3.address, MAKER_REQUIREMENT)
+            .returns(f.startEpoch + EPOCH * 1000);
         await f.exchange.connect(u3).applyForMaker();
         await f.votingEscrow.mock.getTimestampDropBelow.revertsWithReason(
             "Mock on the method is not initialized"
@@ -470,7 +472,7 @@ describe("Exchange", function () {
         });
 
         it("Should revert if price is not available", async function () {
-            await twapOracle.mock.getTwap.returns(parseEther("0"));
+            await twapOracle.mock.getTwap.returns(0);
             await expect(exchange.buyP(0, 41, 1)).to.be.revertedWith("Price is not available");
         });
 
@@ -514,7 +516,9 @@ describe("Exchange", function () {
             const buyTxBuilder = () => exchange.buyP(0, 49, matchedUsdc);
 
             beforeEach(async function () {
-                await fund.mock.extrapolateNav.returns(estimatedNav, 0, 0);
+                await fund.mock.extrapolateNav
+                    .withArgs(startEpoch - EPOCH * 2, parseEther("1000"))
+                    .returns(estimatedNav, 0, 0);
             });
 
             it("Should update balance", async function () {
@@ -566,7 +570,9 @@ describe("Exchange", function () {
             const buyTxBuilder = () => exchange.buyP(0, 42, ASK_1_PD_0);
 
             beforeEach(async function () {
-                await fund.mock.extrapolateNav.returns(estimatedNav, 0, 0);
+                await fund.mock.extrapolateNav
+                    .withArgs(startEpoch - EPOCH * 2, parseEther("1000"))
+                    .returns(estimatedNav, 0, 0);
             });
 
             it("Should update balance", async function () {
@@ -640,7 +646,9 @@ describe("Exchange", function () {
             const buyTxBuilder = () => exchange.buyP(0, 49, matchedUsdc);
 
             beforeEach(async function () {
-                await fund.mock.extrapolateNav.returns(parseEther("1"), 0, 0);
+                await fund.mock.extrapolateNav
+                    .withArgs(startEpoch - EPOCH * 2, parseEther("1000"))
+                    .returns(parseEther("1"), 0, 0);
             });
 
             it("Should update balance", async function () {
@@ -704,6 +712,93 @@ describe("Exchange", function () {
         // TODO skip expired maker, last order is skipped
     });
 
+    describe("cancelAsk()", function () {
+        let outerFixture: Fixture<FixtureData>;
+
+        before(function () {
+            // Override fixture
+            outerFixture = currentFixture;
+            currentFixture = askOrderBookFixture;
+        });
+
+        after(function () {
+            // Restore fixture
+            currentFixture = outerFixture;
+        });
+
+        it("Should revert when canceling non-existent order", async function () {
+            await expect(
+                exchange.connect(user2).cancelAsk(0, TRANCHE_P, 41, 99)
+            ).to.be.revertedWith("Maker address mismatched");
+            await expect(
+                exchange.connect(user2).cancelAsk(99, TRANCHE_P, 41, 1)
+            ).to.be.revertedWith("Maker address mismatched");
+        });
+
+        it("Should revert when canceling other's order", async function () {
+            await expect(exchange.cancelAsk(0, TRANCHE_P, 41, 1)).to.be.revertedWith(
+                "Maker address mismatched"
+            );
+        });
+
+        it("Should revert when canceling completely filled order", async function () {
+            await fund.mock.extrapolateNav.returns(parseEther("1"), 0, 0);
+            await exchange.buyP(0, 42, ASK_1_PD_0);
+            await expect(exchange.connect(user2).cancelAsk(0, TRANCHE_P, 41, 1)).to.be.revertedWith(
+                "Maker address mismatched"
+            );
+        });
+
+        it("Should delete the canceled order", async function () {
+            await exchange.connect(user2).cancelAsk(0, TRANCHE_P, 41, 1);
+            const order = await exchange.getAskOrder(0, TRANCHE_P, 41, 1);
+            expect(order.maker).to.equal(ethers.constants.AddressZero);
+            expect(order.amount).to.equal(0);
+            expect(order.fillable).to.equal(0);
+        });
+
+        it("Should update balance", async function () {
+            // Partially fill the order
+            await fund.mock.extrapolateNav.returns(parseEther("1"), 0, 0);
+            await exchange.buyP(0, 42, ASK_1_PD_0.div(2));
+            const matchedShares = ASK_1_PD_0.div(2).mul(MAKER_RESERVE_BPS).div(10000);
+
+            const oldAvailable = await exchange.availableBalanceOf(TRANCHE_P, addr2);
+            await exchange.connect(user2).cancelAsk(0, TRANCHE_P, 41, 1);
+            expect(await exchange.availableBalanceOf(TRANCHE_P, addr2)).to.equal(
+                oldAvailable.add(ASK_1_PD_0).sub(matchedShares)
+            );
+        });
+
+        it("Should emit event", async function () {
+            // Partially fill the order
+            await fund.mock.extrapolateNav.returns(parseEther("1"), 0, 0);
+            await exchange.buyP(0, 42, ASK_1_PD_0.div(2));
+            const matchedUsdc = ASK_1_PD_0.div(2).mul(MAKER_RESERVE_BPS).div(10000);
+
+            await expect(exchange.connect(user2).cancelAsk(0, TRANCHE_P, 41, 1))
+                .to.emit(exchange, "AskOrderCanceled")
+                .withArgs(addr2, TRANCHE_P, 41, ASK_1_PD_0, 0, 1, ASK_1_PD_0.sub(matchedUsdc));
+        });
+
+        it("Should update best ask", async function () {
+            await exchange.connect(user2).cancelAsk(0, TRANCHE_P, 45, 1);
+            expect(await exchange.bestAsks(0, TRANCHE_P)).to.equal(41);
+
+            await exchange.connect(user2).cancelAsk(0, TRANCHE_P, 41, 1);
+            expect(await exchange.bestAsks(0, TRANCHE_P)).to.equal(45);
+
+            await exchange.connect(user3).cancelAsk(0, TRANCHE_P, 45, 2);
+            expect(await exchange.bestAsks(0, TRANCHE_P)).to.equal(45);
+
+            await exchange.connect(user2).cancelAsk(0, TRANCHE_P, 45, 3);
+            expect(await exchange.bestAsks(0, TRANCHE_P)).to.equal(49);
+
+            await exchange.connect(user3).cancelAsk(0, TRANCHE_P, 49, 1);
+            expect(await exchange.bestAsks(0, TRANCHE_P)).to.equal(82);
+        });
+    });
+
     describe("sellP()", function () {
         let outerFixture: Fixture<FixtureData>;
 
@@ -724,7 +819,7 @@ describe("Exchange", function () {
         });
 
         it("Should revert if price is not available", async function () {
-            await twapOracle.mock.getTwap.returns(parseEther("0"));
+            await twapOracle.mock.getTwap.returns(0);
             await expect(exchange.sellP(0, 41, 1)).to.be.revertedWith("Price is not available");
         });
 
@@ -767,7 +862,9 @@ describe("Exchange", function () {
             const sellTxBuilder = () => exchange.sellP(0, 33, matchedShares);
 
             beforeEach(async function () {
-                await fund.mock.extrapolateNav.returns(estimatedNav, 0, 0);
+                await fund.mock.extrapolateNav
+                    .withArgs(startEpoch - EPOCH * 2, parseEther("1000"))
+                    .returns(estimatedNav, 0, 0);
             });
 
             it("Should update balance", async function () {
@@ -817,7 +914,9 @@ describe("Exchange", function () {
             const sellTxBuilder = () => exchange.sellP(0, 40, BID_1_PD_0);
 
             beforeEach(async function () {
-                await fund.mock.extrapolateNav.returns(estimatedNav, 0, 0);
+                await fund.mock.extrapolateNav
+                    .withArgs(startEpoch - EPOCH * 2, parseEther("1000"))
+                    .returns(estimatedNav, 0, 0);
             });
 
             it("Should update balance", async function () {
@@ -889,7 +988,9 @@ describe("Exchange", function () {
             const sellTxBuilder = () => exchange.sellP(0, 33, matchedShares);
 
             beforeEach(async function () {
-                await fund.mock.extrapolateNav.returns(parseEther("1"), 0, 0);
+                await fund.mock.extrapolateNav
+                    .withArgs(startEpoch - EPOCH * 2, parseEther("1000"))
+                    .returns(parseEther("1"), 0, 0);
             });
 
             it("Should update balance", async function () {
@@ -953,5 +1054,522 @@ describe("Exchange", function () {
         });
 
         // TODO skip expired maker, last order is skipped
+    });
+
+    describe("cancelBid()", function () {
+        let outerFixture: Fixture<FixtureData>;
+
+        before(function () {
+            // Override fixture
+            outerFixture = currentFixture;
+            currentFixture = bidOrderBookFixture;
+        });
+
+        after(function () {
+            // Restore fixture
+            currentFixture = outerFixture;
+        });
+
+        it("Should revert when canceling non-existent order", async function () {
+            await expect(
+                exchange.connect(user2).cancelBid(0, TRANCHE_P, 41, 99)
+            ).to.be.revertedWith("Maker address mismatched");
+            await expect(
+                exchange.connect(user2).cancelBid(99, TRANCHE_P, 41, 1)
+            ).to.be.revertedWith("Maker address mismatched");
+        });
+
+        it("Should revert when canceling other's order", async function () {
+            await expect(exchange.cancelBid(0, TRANCHE_P, 41, 1)).to.be.revertedWith(
+                "Maker address mismatched"
+            );
+        });
+
+        it("Should revert when canceling completely filled order", async function () {
+            await fund.mock.extrapolateNav.returns(parseEther("1"), 0, 0);
+            await exchange.sellP(0, 40, BID_1_PD_0);
+            await expect(exchange.connect(user2).cancelBid(0, TRANCHE_P, 41, 1)).to.be.revertedWith(
+                "Maker address mismatched"
+            );
+        });
+
+        it("Should delete the canceled order", async function () {
+            await exchange.connect(user2).cancelBid(0, TRANCHE_P, 41, 1);
+            const order = await exchange.getBidOrder(0, TRANCHE_P, 41, 1);
+            expect(order.maker).to.equal(ethers.constants.AddressZero);
+            expect(order.amount).to.equal(0);
+            expect(order.fillable).to.equal(0);
+        });
+
+        it("Should update balance", async function () {
+            // Partially fill the order
+            await fund.mock.extrapolateNav.returns(parseEther("1"), 0, 0);
+            await exchange.sellP(0, 40, BID_1_PD_0.div(2));
+            const matchedUsdc = BID_1_PD_0.div(2).mul(MAKER_RESERVE_BPS).div(10000);
+
+            const returnedUsdc = BID_1_PD_0.sub(matchedUsdc).div(USDC_TO_ETHER);
+            await expect(() =>
+                exchange.connect(user2).cancelBid(0, TRANCHE_P, 41, 1)
+            ).to.changeTokenBalances(usdc, [user2, exchange], [returnedUsdc, returnedUsdc.mul(-1)]);
+        });
+
+        it("Should emit event", async function () {
+            // Partially fill the order
+            await fund.mock.extrapolateNav.returns(parseEther("1"), 0, 0);
+            await exchange.sellP(0, 40, BID_1_PD_0.div(2));
+            const matchedUsdc = BID_1_PD_0.div(2).mul(MAKER_RESERVE_BPS).div(10000);
+
+            await expect(exchange.connect(user2).cancelBid(0, TRANCHE_P, 41, 1))
+                .to.emit(exchange, "BidOrderCanceled")
+                .withArgs(addr2, TRANCHE_P, 41, BID_1_PD_0, 0, 1, BID_1_PD_0.sub(matchedUsdc));
+        });
+
+        it("Should update best bid", async function () {
+            await exchange.connect(user2).cancelBid(0, TRANCHE_P, 37, 2);
+            expect(await exchange.bestBids(0, TRANCHE_P)).to.equal(41);
+
+            await exchange.connect(user2).cancelBid(0, TRANCHE_P, 41, 1);
+            expect(await exchange.bestBids(0, TRANCHE_P)).to.equal(37);
+
+            await exchange.connect(user3).cancelBid(0, TRANCHE_P, 37, 1);
+            expect(await exchange.bestBids(0, TRANCHE_P)).to.equal(37);
+
+            await exchange.connect(user2).cancelBid(0, TRANCHE_P, 37, 3);
+            expect(await exchange.bestBids(0, TRANCHE_P)).to.equal(33);
+
+            await exchange.connect(user3).cancelBid(0, TRANCHE_P, 33, 1);
+            expect(await exchange.bestBids(0, TRANCHE_P)).to.equal(0);
+        });
+    });
+
+    describe("settleMaker() and settleTaker()", function () {
+        let outerFixture: Fixture<FixtureData>;
+        const frozenUsdcForP = parseEther("1");
+        const reservedP = frozenUsdcForP.mul(MAKER_RESERVE_BPS).div(10000).mul(10).div(11);
+        const frozenUsdcForA = parseEther("2");
+        const reservedA = frozenUsdcForA.mul(MAKER_RESERVE_BPS).div(10000).mul(10).div(11);
+        const frozenB = parseEther("3");
+        const reservedUsdcForB = frozenB.mul(MAKER_RESERVE_BPS).div(10000).mul(9).div(10);
+
+        async function tradeFixture(): Promise<FixtureData> {
+            const f = await loadFixture(deployFixture);
+            const u2 = f.wallets.user2;
+
+            // Order book of all the three tranches
+            // Ask:
+            // +10%   20(user2)
+            // Bid:
+            // -10%   50(user2)
+            await f.exchange.connect(u2).placeAsk(TRANCHE_P, 81, ASK_1_PD_1, 0, 0);
+            await f.exchange.connect(u2).placeAsk(TRANCHE_A, 81, ASK_1_PD_1, 0, 0);
+            await f.exchange.connect(u2).placeAsk(TRANCHE_B, 81, ASK_1_PD_1, 0, 0);
+            await f.exchange.connect(u2).placeBid(TRANCHE_P, 1, BID_1_PD_N1, 0, 0);
+            await f.exchange.connect(u2).placeBid(TRANCHE_A, 1, BID_1_PD_N1, 0, 0);
+            await f.exchange.connect(u2).placeBid(TRANCHE_B, 1, BID_1_PD_N1, 0, 0);
+
+            await f.fund.mock.extrapolateNav
+                .withArgs(f.startEpoch - EPOCH * 2, parseEther("1000"))
+                .returns(parseEther("1"), parseEther("1"), parseEther("1"));
+            // User 1 buys P and A and sells B
+            await f.exchange.buyP(0, 81, frozenUsdcForP);
+            await f.exchange.buyA(0, 81, frozenUsdcForA);
+            await f.exchange.sellB(0, 1, frozenB);
+
+            return f;
+        }
+
+        before(function () {
+            // Override fixture
+            outerFixture = currentFixture;
+            currentFixture = tradeFixture;
+        });
+
+        after(function () {
+            // Restore fixture
+            currentFixture = outerFixture;
+        });
+
+        async function expectSettleResult(
+            settleFuncName: string,
+            user: Wallet,
+            epoch: number,
+            amountP: BigNumberish,
+            amountA: BigNumberish,
+            amountB: BigNumberish,
+            usdcAmount: BigNumberish
+        ) {
+            const result = await exchange.connect(user).callStatic[settleFuncName](epoch);
+            expect(result.sharesP).to.equal(amountP);
+            expect(result.sharesA).to.equal(amountA);
+            expect(result.sharesB).to.equal(amountB);
+            expect(result.quoteAmount).to.equal(usdcAmount);
+
+            const oldP = await exchange.availableBalanceOf(TRANCHE_P, user.address);
+            const oldA = await exchange.availableBalanceOf(TRANCHE_A, user.address);
+            const oldB = await exchange.availableBalanceOf(TRANCHE_B, user.address);
+            await expect(() =>
+                exchange.connect(user)[settleFuncName](epoch)
+            ).to.changeTokenBalances(
+                usdc,
+                [user, exchange],
+                [
+                    result.quoteAmount.div(USDC_TO_ETHER),
+                    result.quoteAmount.div(USDC_TO_ETHER).mul(-1),
+                ]
+            );
+            expect(await exchange.availableBalanceOf(TRANCHE_P, user.address)).to.equal(
+                oldP.add(result.sharesP)
+            );
+            expect(await exchange.availableBalanceOf(TRANCHE_A, user.address)).to.equal(
+                oldA.add(result.sharesA)
+            );
+            expect(await exchange.availableBalanceOf(TRANCHE_B, user.address)).to.equal(
+                oldB.add(result.sharesB)
+            );
+        }
+
+        it("Should revert if price is not available", async function () {
+            await twapOracle.mock.getTwap.withArgs(startEpoch + EPOCH).returns(0);
+            await expect(exchange.settleMaker(startEpoch)).to.be.revertedWith(
+                "Price is not available"
+            );
+            await expect(exchange.settleTaker(startEpoch)).to.be.revertedWith(
+                "Price is not available"
+            );
+        });
+
+        it("Should succeed with no change when settling nothing", async function () {
+            await fund.mock.extrapolateNav.returns(
+                parseEther("1"),
+                parseEther("1"),
+                parseEther("1")
+            );
+            await expect(() =>
+                exchange.connect(user3).settleMaker(startEpoch - EPOCH)
+            ).to.changeTokenBalance(usdc, user3, 0);
+            expect(await exchange.availableBalanceOf(TRANCHE_P, addr3)).to.equal(USER3_P);
+            expect(await exchange.availableBalanceOf(TRANCHE_A, addr3)).to.equal(USER3_A);
+            expect(await exchange.availableBalanceOf(TRANCHE_B, addr3)).to.equal(USER3_B);
+        });
+
+        describe("Settle at exactly the estimated NAV", function () {
+            const settledP = frozenUsdcForP.mul(10).div(11);
+            const settledA = frozenUsdcForA.mul(10).div(11);
+            const settledB = frozenB;
+            const settledUsdcForP = frozenUsdcForP;
+            const settledUsdcForA = frozenUsdcForA;
+            const settledUsdcForB = frozenB.mul(9).div(10);
+
+            beforeEach(async function () {
+                await fund.mock.extrapolateNav.returns(
+                    parseEther("1"),
+                    parseEther("1"),
+                    parseEther("1")
+                );
+            });
+
+            it("SettleTaker()", async function () {
+                await expectSettleResult(
+                    "settleTaker",
+                    user1,
+                    startEpoch,
+                    settledP,
+                    settledA,
+                    0,
+                    settledUsdcForB
+                );
+            });
+
+            it("SettleMaker()", async function () {
+                await expectSettleResult(
+                    "settleMaker",
+                    user2,
+                    startEpoch,
+                    reservedP.sub(settledP),
+                    reservedA.sub(settledA),
+                    settledB,
+                    settledUsdcForP.add(settledUsdcForA).add(reservedUsdcForB).sub(settledUsdcForB)
+                );
+            });
+        });
+
+        describe("Settle at a high price", function () {
+            const navP = parseEther("1.2");
+            const navA = parseEther("1.05");
+            const navB = parseEther("1.35");
+            const settledP = frozenUsdcForP.mul(10).div(11).mul(parseEther("1")).div(navP);
+            const settledA = frozenUsdcForA.mul(10).div(11).mul(parseEther("1")).div(navA);
+            const settledB = reservedUsdcForB.mul(parseEther("1")).div(navB.mul(9).div(10));
+            const settledUsdcForP = frozenUsdcForP;
+            const settledUsdcForA = frozenUsdcForA;
+            const settledUsdcForB = reservedUsdcForB;
+
+            beforeEach(async function () {
+                await fund.mock.extrapolateNav.returns(navP, navA, navB);
+            });
+
+            it("SettleTaker()", async function () {
+                await expectSettleResult(
+                    "settleTaker",
+                    user1,
+                    startEpoch,
+                    settledP,
+                    settledA,
+                    frozenB.sub(settledB),
+                    settledUsdcForB
+                );
+            });
+
+            it("SettleMaker()", async function () {
+                await expectSettleResult(
+                    "settleMaker",
+                    user2,
+                    startEpoch,
+                    reservedP.sub(settledP),
+                    reservedA.sub(settledA),
+                    settledB,
+                    settledUsdcForP.add(settledUsdcForA)
+                );
+            });
+        });
+
+        describe("Settle at a low price", function () {
+            const navP = parseEther("0.8");
+            const navA = parseEther("1.05");
+            const navB = parseEther("0.55");
+            const settledP = reservedP;
+            const settledA = frozenUsdcForA.mul(parseEther("1")).div(navA).mul(10).div(11);
+            const settledB = frozenB;
+            const settledUsdcForP = reservedP.mul(navP).div(parseEther("1")).mul(11).div(10);
+            const settledUsdcForA = frozenUsdcForA;
+            const settledUsdcForB = frozenB.mul(navB).div(parseEther("1")).mul(9).div(10);
+
+            beforeEach(async function () {
+                await fund.mock.extrapolateNav.returns(navP, navA, navB);
+            });
+
+            it("SettleTaker()", async function () {
+                await expectSettleResult(
+                    "settleTaker",
+                    user1,
+                    startEpoch,
+                    settledP,
+                    settledA,
+                    0,
+                    settledUsdcForB.add(frozenUsdcForP).sub(settledUsdcForP)
+                );
+            });
+
+            it("SettleMaker()", async function () {
+                await expectSettleResult(
+                    "settleMaker",
+                    user2,
+                    startEpoch,
+                    0,
+                    reservedA.sub(settledA),
+                    settledB,
+                    settledUsdcForP.add(settledUsdcForA).add(reservedUsdcForB).sub(settledUsdcForB)
+                );
+            });
+        });
+    });
+
+    describe("Expired ask order", function () {
+        let outerFixture: Fixture<FixtureData>;
+        const frozenUsdc = parseEther("0.1");
+        const reservedB = frozenUsdc.mul(11).div(10);
+
+        async function expiredAskOrderFixture(): Promise<FixtureData> {
+            const f = await loadFixture(deployFixture);
+            const u2 = f.wallets.user2;
+            const u3 = f.wallets.user3;
+            await f.votingEscrow.mock.getTimestampDropBelow
+                .withArgs(u3.address, MAKER_REQUIREMENT)
+                .returns(f.startEpoch + EPOCH * 9.5);
+            await f.exchange.connect(u3).applyForMaker();
+            await f.exchange.connect(u3).placeAsk(TRANCHE_B, 41, parseEther("1"), 0, 0);
+            await f.exchange.connect(u2).placeAsk(TRANCHE_B, 41, parseEther("1"), 0, 0);
+            await f.exchange.connect(u3).placeAsk(TRANCHE_B, 41, parseEther("1"), 0, 0);
+            await f.fund.mock.extrapolateNav.returns(0, 0, parseEther("1"));
+            // Buy something before user3's orders expire
+            advanceBlockAtTime(f.startEpoch + EPOCH * 9);
+            await f.exchange.buyB(0, 41, frozenUsdc);
+            // Buy something in the same epoch after user3's orders expire
+            advanceBlockAtTime(f.startEpoch + EPOCH * 9.5);
+            await f.exchange.buyB(0, 41, 100);
+            return f;
+        }
+
+        before(function () {
+            // Override fixture
+            outerFixture = currentFixture;
+            currentFixture = expiredAskOrderFixture;
+        });
+
+        after(function () {
+            // Restore fixture
+            currentFixture = outerFixture;
+        });
+
+        it("Should skip expired order", async function () {
+            expect(await exchange.isMaker(addr3)).to.equal(false);
+            expect((await exchange.asks(0, TRANCHE_B, 41)).head).to.equal(2);
+            const user3Trade = await exchange.pendingTrades(
+                addr3,
+                TRANCHE_B,
+                startEpoch + EPOCH * 10
+            );
+            expect(user3Trade.makerSell.reservedBase).to.equal(reservedB);
+        });
+
+        it("Should not match skipped order even after maker applying again", async function () {
+            await votingEscrow.mock.getTimestampDropBelow
+                .withArgs(addr3, MAKER_REQUIREMENT)
+                .returns(startEpoch + EPOCH * 19);
+            await exchange.connect(user3).applyForMaker();
+            expect(await exchange.isMaker(addr3)).to.equal(true);
+
+            // User3's order at index 1 has been skipped and cannot be matched forever.
+            await exchange.buyB(0, 41, 300);
+            expect((await exchange.asks(0, TRANCHE_B, 41)).head).to.equal(2);
+            const user3Trade = await exchange.pendingTrades(
+                addr3,
+                TRANCHE_B,
+                startEpoch + EPOCH * 10
+            );
+            expect(user3Trade.makerSell.reservedBase).to.equal(reservedB);
+        });
+
+        it("Should match order that was expired but not skipped", async function () {
+            await votingEscrow.mock.getTimestampDropBelow
+                .withArgs(addr3, MAKER_REQUIREMENT)
+                .returns(startEpoch + EPOCH * 20);
+            await exchange.connect(user3).applyForMaker();
+            expect(await exchange.isMaker(addr3)).to.equal(true);
+
+            // User3's order at index 3 can be matched even if it was expired
+            // for a short period of time.
+            await exchange.buyB(0, 41, parseEther("100"));
+            expect(await exchange.bestAsks(0, TRANCHE_B)).to.equal(82);
+            const user3Trade = await exchange.pendingTrades(
+                addr3,
+                TRANCHE_B,
+                startEpoch + EPOCH * 10
+            );
+            expect(user3Trade.makerSell.reservedBase).to.equal(reservedB.add(parseEther("1")));
+        });
+
+        it("Should cancel skipped order", async function () {
+            const oldB = await exchange.availableBalanceOf(TRANCHE_B, addr3);
+            await exchange.connect(user3).cancelAsk(0, TRANCHE_B, 41, 1);
+            expect(await exchange.availableBalanceOf(TRANCHE_B, addr3)).to.equal(
+                oldB.add(parseEther("1").sub(reservedB))
+            );
+            const order = await exchange.getAskOrder(0, TRANCHE_B, 41, 1);
+            expect(order.maker).to.equal(ethers.constants.AddressZero);
+            expect(order.amount).to.equal(0);
+            expect(order.fillable).to.equal(0);
+        });
+    });
+
+    describe("Expired bid order", function () {
+        let outerFixture: Fixture<FixtureData>;
+        const frozenA = parseEther("0.1");
+        const reservedUsdc = frozenA.mul(11).div(10);
+
+        async function expiredBidOrderFixture(): Promise<FixtureData> {
+            const f = await loadFixture(deployFixture);
+            const u2 = f.wallets.user2;
+            const u3 = f.wallets.user3;
+            await f.votingEscrow.mock.getTimestampDropBelow
+                .withArgs(u3.address, MAKER_REQUIREMENT)
+                .returns(f.startEpoch + EPOCH * 9.5);
+            await f.exchange.connect(u3).applyForMaker();
+            await f.exchange.connect(u3).placeBid(TRANCHE_A, 41, parseEther("1"), 0, 0);
+            await f.exchange.connect(u2).placeBid(TRANCHE_A, 41, parseEther("1"), 0, 0);
+            await f.exchange.connect(u3).placeBid(TRANCHE_A, 41, parseEther("1"), 0, 0);
+            await f.fund.mock.extrapolateNav.returns(0, parseEther("1"), 0);
+            // Sell something before user3's orders expire
+            advanceBlockAtTime(f.startEpoch + EPOCH * 9);
+            await f.exchange.sellA(0, 41, frozenA);
+            // Sell something in the same epoch after user3's orders expire
+            advanceBlockAtTime(f.startEpoch + EPOCH * 9.5);
+            await f.exchange.sellA(0, 41, 100);
+            return f;
+        }
+
+        before(function () {
+            // Override fixture
+            outerFixture = currentFixture;
+            currentFixture = expiredBidOrderFixture;
+        });
+
+        after(function () {
+            // Restore fixture
+            currentFixture = outerFixture;
+        });
+
+        it("Should skip expired order", async function () {
+            expect(await exchange.isMaker(addr3)).to.equal(false);
+            expect((await exchange.bids(0, TRANCHE_A, 41)).head).to.equal(2);
+            const user3Trade = await exchange.pendingTrades(
+                addr3,
+                TRANCHE_A,
+                startEpoch + EPOCH * 10
+            );
+            expect(user3Trade.makerBuy.reservedQuote).to.equal(reservedUsdc);
+        });
+
+        it("Should not match skipped order even after maker applying again", async function () {
+            await votingEscrow.mock.getTimestampDropBelow
+                .withArgs(addr3, MAKER_REQUIREMENT)
+                .returns(startEpoch + EPOCH * 19);
+            await exchange.connect(user3).applyForMaker();
+            expect(await exchange.isMaker(addr3)).to.equal(true);
+
+            // User3's order at index 1 has been skipped and cannot be matched forever.
+            await exchange.sellA(0, 41, 300);
+            expect((await exchange.bids(0, TRANCHE_A, 41)).head).to.equal(2);
+            const user3Trade = await exchange.pendingTrades(
+                addr3,
+                TRANCHE_A,
+                startEpoch + EPOCH * 10
+            );
+            expect(user3Trade.makerBuy.reservedQuote).to.equal(reservedUsdc);
+        });
+
+        it("Should match order that was expired but not skipped", async function () {
+            await votingEscrow.mock.getTimestampDropBelow
+                .withArgs(addr3, MAKER_REQUIREMENT)
+                .returns(startEpoch + EPOCH * 20);
+            await exchange.connect(user3).applyForMaker();
+            expect(await exchange.isMaker(addr3)).to.equal(true);
+
+            // User3's order at index 3 can be matched even if it was expired
+            // for a short period of time.
+            await exchange.sellA(0, 41, parseEther("100"));
+            expect(await exchange.bestBids(0, TRANCHE_A)).to.equal(0);
+            const user3Trade = await exchange.pendingTrades(
+                addr3,
+                TRANCHE_A,
+                startEpoch + EPOCH * 10
+            );
+            expect(user3Trade.makerBuy.reservedQuote).to.equal(reservedUsdc.add(parseEther("1")));
+        });
+
+        it("Should cancel skipped order", async function () {
+            const fillableUsdc = parseEther("1").sub(reservedUsdc);
+            await expect(() =>
+                exchange.connect(user3).cancelBid(0, TRANCHE_A, 41, 1)
+            ).to.changeTokenBalances(
+                usdc,
+                [user3, exchange],
+                [fillableUsdc.div(USDC_TO_ETHER), fillableUsdc.div(USDC_TO_ETHER).mul(-1)]
+            );
+            const order = await exchange.getBidOrder(0, TRANCHE_A, 41, 1);
+            expect(order.maker).to.equal(ethers.constants.AddressZero);
+            expect(order.amount).to.equal(0);
+            expect(order.fillable).to.equal(0);
+        });
     });
 });

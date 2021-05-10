@@ -672,7 +672,7 @@ contract Exchange is ExchangeRoles, Staking {
     ) internal {
         OrderQueue storage orderQueue = bids[conversionID][tranche][pdLevel];
         Order storage order = orderQueue.list[index];
-        require(order.maker == maker, "invalid maker address");
+        require(order.maker == maker, "Maker address mismatched");
 
         uint256 fillable = order.fillable;
         emit BidOrderCanceled(maker, tranche, pdLevel, order.amount, conversionID, index, fillable);
@@ -705,7 +705,7 @@ contract Exchange is ExchangeRoles, Staking {
     ) internal {
         OrderQueue storage orderQueue = asks[conversionID][tranche][pdLevel];
         Order storage order = orderQueue.list[index];
-        require(order.maker == maker, "invalid maker address");
+        require(order.maker == maker, "Maker address mismatched");
 
         uint256 fillable = order.fillable;
         emit AskOrderCanceled(maker, tranche, pdLevel, order.amount, conversionID, index, fillable);
@@ -912,7 +912,7 @@ contract Exchange is ExchangeRoles, Staking {
 
                 if (currentTrade.reservedQuote < order.fillable) {
                     // Taker is completely filled
-                    currentTrade.effectiveBase = currentTrade.frozenBase.divideDecimal(
+                    currentTrade.effectiveBase = currentTrade.frozenBase.multiplyDecimal(
                         pdLevel.mul(PD_TICK).add(PD_START)
                     );
                 } else {
