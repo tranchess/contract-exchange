@@ -912,7 +912,7 @@ contract Exchange is ExchangeRoles, Staking {
 
                 if (currentTrade.reservedQuote < order.fillable) {
                     // Taker is completely filled
-                    currentTrade.effectiveBase = currentTrade.frozenBase.divideDecimal(
+                    currentTrade.effectiveBase = currentTrade.frozenBase.multiplyDecimal(
                         pdLevel.mul(PD_TICK).add(PD_START)
                     );
                 } else {
