@@ -219,6 +219,33 @@ describe("Staking", function () {
         });
     });
 
+    describe("claimAndDeposit()", function () {
+        it("Should transfer shares and update balance", async function () {
+            const primaryMarket = await deployMockForName(owner, "IPrimaryMarket");
+            await expect(() => staking.claimAndDeposit(primaryMarket.address)).to.callMocks(
+                {
+                    func: primaryMarket.mock.claim.withArgs(addr1),
+                    rets: [10000, 0],
+                },
+                {
+                    func: shareP.mock.transferFrom.withArgs(addr1, staking.address, 10000),
+                    rets: [true],
+                }
+            );
+            expect(await staking.availableBalanceOf(TRANCHE_P, addr1)).to.equal(USER1_P.add(10000));
+            expect(await staking.totalSupply(TRANCHE_P)).to.equal(TOTAL_P.add(10000));
+        });
+
+        it("Should emit an event", async function () {
+            const primaryMarket = await deployMockForName(owner, "IPrimaryMarket");
+            await primaryMarket.mock.claim.withArgs(addr1).returns(10000, 0);
+            await shareP.mock.transferFrom.withArgs(addr1, staking.address, 10000).returns(true);
+            await expect(staking.claimAndDeposit(primaryMarket.address))
+                .to.emit(staking, "Deposited")
+                .withArgs(TRANCHE_P, addr1, 10000);
+        });
+    });
+
     describe("withdraw()", function () {
         it("Should transfer shares and update balance", async function () {
             await expect(() => staking.withdraw(TRANCHE_P, 1000)).to.callMocks({
