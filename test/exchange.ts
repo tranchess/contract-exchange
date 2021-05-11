@@ -1634,4 +1634,34 @@ describe("Exchange", function () {
             );
         });
     });
+
+    describe("Miscellaneous", function () {
+        it("Should check quote decimal places", async function () {
+            const Exchange = await ethers.getContractFactory("Exchange");
+            await expect(
+                Exchange.connect(owner).deploy(
+                    fund.address,
+                    chess.address,
+                    chessController.address,
+                    usdc.address,
+                    19,
+                    votingEscrow.address,
+                    MIN_BID_AMOUNT,
+                    MIN_ASK_AMOUNT,
+                    MAKER_REQUIREMENT
+                )
+            ).to.be.revertedWith("Quote asset decimals larger than 18");
+        });
+
+        it("Should correctly handle uninitialized best ask", async function () {
+            await fund.mock.extrapolateNav.returns(
+                parseEther("1"),
+                parseEther("1"),
+                parseEther("1")
+            );
+            await expect(exchange.buyB(0, 81, 1)).to.be.revertedWith(
+                "Nothing can be bought at the given premium-discount level"
+            );
+        });
+    });
 });
