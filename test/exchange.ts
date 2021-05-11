@@ -1572,4 +1572,48 @@ describe("Exchange", function () {
             expect(order.fillable).to.equal(0);
         });
     });
+
+    describe("Safe transfer", function () {
+        let mockUsdc: MockContract;
+
+        beforeEach(async function () {
+            // Deploy a new Exchange using a mocked quote token
+            mockUsdc = await deployMockForName(owner, "IERC20");
+            const Exchange = await ethers.getContractFactory("Exchange");
+            exchange = await Exchange.connect(owner).deploy(
+                fund.address,
+                chess.address,
+                chessController.address,
+                mockUsdc.address,
+                6,
+                votingEscrow.address,
+                MIN_BID_AMOUNT,
+                MIN_ASK_AMOUNT,
+                MAKER_REQUIREMENT
+            );
+            exchange = exchange.connect(user1);
+            await votingEscrow.mock.getTimestampDropBelow
+                .withArgs(user1.address, MAKER_REQUIREMENT)
+                .returns(startEpoch + EPOCH * 500);
+            await exchange.applyForMaker();
+        });
+
+        it("Should check return value of transferFrom()", async function () {
+            await mockUsdc.mock.transferFrom
+                .withArgs(addr1, exchange.address, parseUsdc("10"))
+                .returns(false);
+            await expect(
+                exchange.placeBid(TRANCHE_A, 41, parseEther("10"), 0, 0)
+            ).to.be.revertedWith("Failed to transfer quote asset from account");
+        });
+
+        it("Should check return value of transfer()", async function () {
+            await mockUsdc.mock.transferFrom.returns(true);
+            await exchange.placeBid(TRANCHE_A, 41, parseEther("10"), 0, 0);
+            await mockUsdc.mock.transfer.withArgs(addr1, parseUsdc("10")).returns(false);
+            await expect(exchange.cancelBid(0, TRANCHE_A, 41, 1)).to.be.revertedWith(
+                "Failed to transfer quote asset"
+            );
+        });
+    });
 });
