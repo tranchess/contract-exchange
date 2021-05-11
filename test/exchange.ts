@@ -490,6 +490,15 @@ describe("Exchange", function () {
             );
         });
 
+        it("Should check conversion ID", async function () {
+            await fund.mock.extrapolateNav.returns(
+                parseEther("1"),
+                parseEther("1"),
+                parseEther("1")
+            );
+            await expect(exchange.buyP(1, 41, 1)).to.be.revertedWith("Invalid conversion ID");
+        });
+
         it("Should revert if no order can be matched", async function () {
             await fund.mock.extrapolateNav.returns(
                 parseEther("1"),
@@ -835,6 +844,15 @@ describe("Exchange", function () {
             await expect(exchange.sellP(0, 82, 1)).to.be.revertedWith(
                 "Invalid premium-discount level"
             );
+        });
+
+        it("Should check conversion ID", async function () {
+            await fund.mock.extrapolateNav.returns(
+                parseEther("1"),
+                parseEther("1"),
+                parseEther("1")
+            );
+            await expect(exchange.sellP(1, 41, 1)).to.be.revertedWith("Invalid conversion ID");
         });
 
         it("Should revert if no order can be matched", async function () {
