@@ -308,6 +308,12 @@ describe("Exchange", function () {
                 expect(order2.fillable).to.equal(parseEther("200"));
             }
         });
+
+        it("Should emit event", async function () {
+            await expect(exchange.placeBid(TRANCHE_A, 41, parseEther("1"), 0, 0x12345678))
+                .to.emit(exchange, "BidOrderPlaced")
+                .withArgs(addr1, TRANCHE_A, 41, parseEther("1"), 0, 0x12345678, 1);
+        });
     });
 
     describe("placeAsk()", function () {
@@ -391,6 +397,12 @@ describe("Exchange", function () {
                 expect(order2.amount).to.equal(parseEther("2"));
                 expect(order2.fillable).to.equal(parseEther("2"));
             }
+        });
+
+        it("Should emit event", async function () {
+            await expect(exchange.placeAsk(TRANCHE_A, 41, parseEther("1"), 0, 0x12345678))
+                .to.emit(exchange, "AskOrderPlaced")
+                .withArgs(addr1, TRANCHE_A, 41, parseEther("1"), 0, 0x12345678, 1);
         });
     });
 
@@ -1312,6 +1324,25 @@ describe("Exchange", function () {
                     settledUsdcForP.add(settledUsdcForA).add(reservedUsdcForB).sub(settledUsdcForB)
                 );
             });
+
+            it("Should emit event", async function () {
+                await expect(exchange.settleTaker(startEpoch))
+                    .to.emit(exchange, "TakerSettled")
+                    .withArgs(addr1, startEpoch, settledP, settledA, 0, settledUsdcForB);
+                await expect(exchange.connect(user2).settleMaker(startEpoch))
+                    .to.emit(exchange, "MakerSettled")
+                    .withArgs(
+                        addr2,
+                        startEpoch,
+                        reservedP.sub(settledP),
+                        reservedA.sub(settledA),
+                        settledB,
+                        settledUsdcForP
+                            .add(settledUsdcForA)
+                            .add(reservedUsdcForB)
+                            .sub(settledUsdcForB)
+                    );
+            });
         });
 
         describe("Settle at a high price", function () {
@@ -1428,6 +1459,15 @@ describe("Exchange", function () {
 
             expect(await exchange.isMaker(addr3)).to.equal(true);
             expect(await exchange.makerExpiration(addr3)).to.equal(startEpoch + 22222);
+        });
+
+        it("Should emit event", async function () {
+            await votingEscrow.mock.getTimestampDropBelow
+                .withArgs(addr3, MAKER_REQUIREMENT)
+                .returns(startEpoch + 11111);
+            await expect(exchange.connect(user3).applyForMaker())
+                .to.emit(exchange, "MakerApplied")
+                .withArgs(addr3, startEpoch + 11111);
         });
 
         it("Zero maker requirement", async function () {
