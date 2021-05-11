@@ -183,34 +183,24 @@ describe("Staking", function () {
 
     describe("deposit()", function () {
         it("Should transfer shares and update balance", async function () {
-            // Create an empty contract
-            const Staking = await ethers.getContractFactory("StakingTestWrapper");
-            staking = await Staking.connect(owner).deploy(
-                fund.address,
-                chess.address,
-                chessController.address,
-                usdc.address
-            );
-            staking = staking.connect(user1);
-
             await expect(() => staking.deposit(TRANCHE_P, 10000)).to.callMocks({
                 func: shareP.mock.transferFrom.withArgs(addr1, staking.address, 10000),
                 rets: [true],
             });
-            expect(await staking.availableBalanceOf(TRANCHE_P, addr1)).to.equal(10000);
-            expect(await staking.totalSupply(TRANCHE_P)).to.equal(10000);
+            expect(await staking.availableBalanceOf(TRANCHE_P, addr1)).to.equal(USER1_P.add(10000));
+            expect(await staking.totalSupply(TRANCHE_P)).to.equal(TOTAL_P.add(10000));
             await expect(() => staking.deposit(TRANCHE_A, 1000)).to.callMocks({
                 func: shareA.mock.transferFrom.withArgs(addr1, staking.address, 1000),
                 rets: [true],
             });
-            expect(await staking.availableBalanceOf(TRANCHE_A, addr1)).to.equal(1000);
-            expect(await staking.totalSupply(TRANCHE_A)).to.equal(1000);
+            expect(await staking.availableBalanceOf(TRANCHE_A, addr1)).to.equal(USER1_A.add(1000));
+            expect(await staking.totalSupply(TRANCHE_A)).to.equal(TOTAL_A.add(1000));
             await expect(() => staking.deposit(TRANCHE_B, 100)).to.callMocks({
                 func: shareB.mock.transferFrom.withArgs(addr1, staking.address, 100),
                 rets: [true],
             });
-            expect(await staking.availableBalanceOf(TRANCHE_B, addr1)).to.equal(100);
-            expect(await staking.totalSupply(TRANCHE_B)).to.equal(100);
+            expect(await staking.availableBalanceOf(TRANCHE_B, addr1)).to.equal(USER1_B.add(100));
+            expect(await staking.totalSupply(TRANCHE_B)).to.equal(TOTAL_B.add(100));
         });
 
         it("Should emit an event", async function () {
