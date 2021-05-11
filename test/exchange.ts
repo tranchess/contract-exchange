@@ -1395,6 +1395,61 @@ describe("Exchange", function () {
         });
     });
 
+    describe("applyForMaker()", function () {
+        it("Should update maker status", async function () {
+            await votingEscrow.mock.getTimestampDropBelow
+                .withArgs(addr3, MAKER_REQUIREMENT)
+                .returns(startEpoch + 11111);
+            await exchange.connect(user3).applyForMaker();
+
+            expect(await exchange.isMaker(addr3)).to.equal(true);
+            expect(await exchange.makerExpiration(addr3)).to.equal(startEpoch + 11111);
+        });
+
+        it("Should update maker status for non-maker", async function () {
+            await votingEscrow.mock.getTimestampDropBelow
+                .withArgs(addr3, MAKER_REQUIREMENT)
+                .returns(startEpoch - EPOCH - 11111);
+            await exchange.connect(user3).applyForMaker();
+
+            expect(await exchange.isMaker(addr3)).to.equal(false);
+            expect(await exchange.makerExpiration(addr3)).to.equal(startEpoch - EPOCH - 11111);
+        });
+
+        it("Should update maker status when applying again", async function () {
+            await votingEscrow.mock.getTimestampDropBelow
+                .withArgs(addr3, MAKER_REQUIREMENT)
+                .returns(startEpoch + 11111);
+            await exchange.connect(user3).applyForMaker();
+            await votingEscrow.mock.getTimestampDropBelow
+                .withArgs(addr3, MAKER_REQUIREMENT)
+                .returns(startEpoch + 22222);
+            await exchange.connect(user3).applyForMaker();
+
+            expect(await exchange.isMaker(addr3)).to.equal(true);
+            expect(await exchange.makerExpiration(addr3)).to.equal(startEpoch + 22222);
+        });
+
+        it("Zero maker requirement", async function () {
+            const Exchange = await ethers.getContractFactory("Exchange");
+            exchange = await Exchange.connect(owner).deploy(
+                fund.address,
+                chess.address,
+                chessController.address,
+                usdc.address,
+                6,
+                votingEscrow.address,
+                MIN_BID_AMOUNT,
+                MIN_ASK_AMOUNT,
+                0
+            );
+            await expect(exchange.connect(user3).applyForMaker()).to.be.revertedWith(
+                "No need to apply for maker"
+            );
+            expect(await exchange.isMaker(addr3)).to.equal(true);
+        });
+    });
+
     describe("Expired ask order", function () {
         let outerFixture: Fixture<FixtureData>;
         const frozenUsdc = parseEther("0.1");
