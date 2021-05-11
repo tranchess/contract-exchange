@@ -181,17 +181,6 @@ describe("Staking", function () {
         staking = fixtureData.staking;
     });
 
-    describe("rewardWeight()", function () {
-        it("Should return the weighted value", async function () {
-            const p = 1000000;
-            const a = 10000;
-            const b = 100;
-            expect(await staking.rewardWeight(1000000, 10000, 100)).to.equal(
-                (p * REWARD_WEIGHT_P + a * REWARD_WEIGHT_A + b * REWARD_WEIGHT_B) / REWARD_WEIGHT_P
-            );
-        });
-    });
-
     describe("deposit()", function () {
         it("Should transfer shares and update balance", async function () {
             // Create an empty contract
@@ -408,7 +397,7 @@ describe("Staking", function () {
         });
     });
 
-    describe("rewardWeight", function () {
+    describe("rewardWeight()", function () {
         it("Should calculate reward weight", async function () {
             expect(await staking.rewardWeight(1000, 0, 0)).to.equal(1000);
             expect(await staking.rewardWeight(0, 1000, 0)).to.equal(
@@ -416,6 +405,17 @@ describe("Staking", function () {
             );
             expect(await staking.rewardWeight(0, 0, 1000)).to.equal(
                 BigNumber.from(1000 * REWARD_WEIGHT_B).div(REWARD_WEIGHT_P)
+            );
+        });
+
+        it("Should return the weighted value", async function () {
+            const p = 1000000;
+            const a = 10000;
+            const b = 100;
+            expect(await staking.rewardWeight(1000000, 10000, 100)).to.equal(
+                BigNumber.from(p * REWARD_WEIGHT_P + a * REWARD_WEIGHT_A + b * REWARD_WEIGHT_B).div(
+                    REWARD_WEIGHT_P
+                )
             );
         });
 
