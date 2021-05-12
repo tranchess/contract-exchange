@@ -726,7 +726,7 @@ contract Exchange is ExchangeRoles, Staking {
             _convertAndUnlock(maker, fillable, 0, 0, conversionID);
         } else if (tranche == TRANCHE_A) {
             _convertAndUnlock(maker, 0, fillable, 0, conversionID);
-        } else if (tranche == TRANCHE_B) {
+        } else {
             _convertAndUnlock(maker, 0, 0, fillable, conversionID);
         }
     }

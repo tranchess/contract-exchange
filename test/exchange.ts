@@ -27,6 +27,9 @@ const USER3_USDC = parseEther("300000");
 const USER3_P = parseEther("30000");
 const USER3_A = parseEther("60000");
 const USER3_B = parseEther("90000");
+const TOTAL_P = USER1_P.add(USER2_P).add(USER3_P);
+const TOTAL_A = USER1_A.add(USER2_A).add(USER3_A);
+const TOTAL_B = USER1_B.add(USER2_B).add(USER3_B);
 const MIN_BID_AMOUNT = parseEther("0.8");
 const MIN_ASK_AMOUNT = parseEther("0.9");
 const MAKER_REQUIREMENT = parseEther("10000");
@@ -210,18 +213,6 @@ describe("Exchange", function () {
         ];
     });
 
-    describe("Proxy", function () {
-        it("Should be properly initialized in a proxy's point of view", async function () {
-            expect(await exchange.fund()).to.equal(fund.address);
-            expect(await exchange.tokenP()).to.equal(shareP.address);
-            expect(await exchange.tokenA()).to.equal(shareA.address);
-            expect(await exchange.tokenB()).to.equal(shareB.address);
-            expect(await exchange.minBidAmount()).to.equal(MIN_BID_AMOUNT);
-            expect(await exchange.minAskAmount()).to.equal(MIN_ASK_AMOUNT);
-            expect(await exchange.makerRequirement()).to.equal(MAKER_REQUIREMENT);
-        });
-    });
-
     describe("endOfEpoch()", function () {
         it("Should return end of an epoch", async function () {
             expect(await exchange.endOfEpoch(startEpoch - EPOCH)).to.equal(startEpoch);
@@ -304,6 +295,12 @@ describe("Exchange", function () {
                 expect(order2.amount).to.equal(parseEther("200"));
                 expect(order2.fillable).to.equal(parseEther("200"));
             }
+        });
+
+        it("Should emit event", async function () {
+            await expect(exchange.placeBid(TRANCHE_A, 41, parseEther("1"), 0, 0x12345678))
+                .to.emit(exchange, "BidOrderPlaced")
+                .withArgs(addr1, TRANCHE_A, 41, parseEther("1"), 0, 0x12345678, 1);
         });
     });
 
@@ -388,6 +385,12 @@ describe("Exchange", function () {
                 expect(order2.amount).to.equal(parseEther("2"));
                 expect(order2.fillable).to.equal(parseEther("2"));
             }
+        });
+
+        it("Should emit event", async function () {
+            await expect(exchange.placeAsk(TRANCHE_A, 41, parseEther("1"), 0, 0x12345678))
+                .to.emit(exchange, "AskOrderPlaced")
+                .withArgs(addr1, TRANCHE_A, 41, parseEther("1"), 0, 0x12345678, 1);
         });
     });
 
@@ -488,6 +491,15 @@ describe("Exchange", function () {
             await expect(exchange.buyP(0, 82, 1)).to.be.revertedWith(
                 "Invalid premium-discount level"
             );
+        });
+
+        it("Should check conversion ID", async function () {
+            await fund.mock.extrapolateNav.returns(
+                parseEther("1"),
+                parseEther("1"),
+                parseEther("1")
+            );
+            await expect(exchange.buyP(1, 41, 1)).to.be.revertedWith("Invalid conversion ID");
         });
 
         it("Should revert if no order can be matched", async function () {
@@ -835,6 +847,15 @@ describe("Exchange", function () {
             await expect(exchange.sellP(0, 82, 1)).to.be.revertedWith(
                 "Invalid premium-discount level"
             );
+        });
+
+        it("Should check conversion ID", async function () {
+            await fund.mock.extrapolateNav.returns(
+                parseEther("1"),
+                parseEther("1"),
+                parseEther("1")
+            );
+            await expect(exchange.sellP(1, 41, 1)).to.be.revertedWith("Invalid conversion ID");
         });
 
         it("Should revert if no order can be matched", async function () {
@@ -1291,6 +1312,25 @@ describe("Exchange", function () {
                     settledUsdcForP.add(settledUsdcForA).add(reservedUsdcForB).sub(settledUsdcForB)
                 );
             });
+
+            it("Should emit event", async function () {
+                await expect(exchange.settleTaker(startEpoch))
+                    .to.emit(exchange, "TakerSettled")
+                    .withArgs(addr1, startEpoch, settledP, settledA, 0, settledUsdcForB);
+                await expect(exchange.connect(user2).settleMaker(startEpoch))
+                    .to.emit(exchange, "MakerSettled")
+                    .withArgs(
+                        addr2,
+                        startEpoch,
+                        reservedP.sub(settledP),
+                        reservedA.sub(settledA),
+                        settledB,
+                        settledUsdcForP
+                            .add(settledUsdcForA)
+                            .add(reservedUsdcForB)
+                            .sub(settledUsdcForB)
+                    );
+            });
         });
 
         describe("Settle at a high price", function () {
@@ -1371,6 +1411,70 @@ describe("Exchange", function () {
                     settledUsdcForP.add(settledUsdcForA).add(reservedUsdcForB).sub(settledUsdcForB)
                 );
             });
+        });
+    });
+
+    describe("applyForMaker()", function () {
+        it("Should update maker status", async function () {
+            await votingEscrow.mock.getTimestampDropBelow
+                .withArgs(addr3, MAKER_REQUIREMENT)
+                .returns(startEpoch + 11111);
+            await exchange.connect(user3).applyForMaker();
+
+            expect(await exchange.isMaker(addr3)).to.equal(true);
+            expect(await exchange.makerExpiration(addr3)).to.equal(startEpoch + 11111);
+        });
+
+        it("Should update maker status for non-maker", async function () {
+            await votingEscrow.mock.getTimestampDropBelow
+                .withArgs(addr3, MAKER_REQUIREMENT)
+                .returns(startEpoch - EPOCH - 11111);
+            await exchange.connect(user3).applyForMaker();
+
+            expect(await exchange.isMaker(addr3)).to.equal(false);
+            expect(await exchange.makerExpiration(addr3)).to.equal(startEpoch - EPOCH - 11111);
+        });
+
+        it("Should update maker status when applying again", async function () {
+            await votingEscrow.mock.getTimestampDropBelow
+                .withArgs(addr3, MAKER_REQUIREMENT)
+                .returns(startEpoch + 11111);
+            await exchange.connect(user3).applyForMaker();
+            await votingEscrow.mock.getTimestampDropBelow
+                .withArgs(addr3, MAKER_REQUIREMENT)
+                .returns(startEpoch + 22222);
+            await exchange.connect(user3).applyForMaker();
+
+            expect(await exchange.isMaker(addr3)).to.equal(true);
+            expect(await exchange.makerExpiration(addr3)).to.equal(startEpoch + 22222);
+        });
+
+        it("Should emit event", async function () {
+            await votingEscrow.mock.getTimestampDropBelow
+                .withArgs(addr3, MAKER_REQUIREMENT)
+                .returns(startEpoch + 11111);
+            await expect(exchange.connect(user3).applyForMaker())
+                .to.emit(exchange, "MakerApplied")
+                .withArgs(addr3, startEpoch + 11111);
+        });
+
+        it("Zero maker requirement", async function () {
+            const Exchange = await ethers.getContractFactory("Exchange");
+            exchange = await Exchange.connect(owner).deploy(
+                fund.address,
+                chess.address,
+                chessController.address,
+                usdc.address,
+                6,
+                votingEscrow.address,
+                MIN_BID_AMOUNT,
+                MIN_ASK_AMOUNT,
+                0
+            );
+            await expect(exchange.connect(user3).applyForMaker()).to.be.revertedWith(
+                "No need to apply for maker"
+            );
+            expect(await exchange.isMaker(addr3)).to.equal(true);
         });
     });
 
@@ -1570,6 +1674,248 @@ describe("Exchange", function () {
             expect(order.maker).to.equal(ethers.constants.AddressZero);
             expect(order.amount).to.equal(0);
             expect(order.fillable).to.equal(0);
+        });
+    });
+
+    describe("Conversion", function () {
+        beforeEach(async function () {
+            await fund.mock.getConversionSize.returns(1);
+            await fund.mock.getConversionTimestamp.withArgs(0).returns(startEpoch + EPOCH * 5);
+            await fund.mock.getConversionTimestamp.withArgs(1).returns(startEpoch + EPOCH * 15);
+            await fund.mock.getConversionTimestamp.withArgs(2).returns(startEpoch + EPOCH * 20);
+            await fund.mock.convert
+                .withArgs(TOTAL_P, TOTAL_A, TOTAL_B, 0)
+                .returns(TOTAL_P, TOTAL_A, TOTAL_B);
+            await fund.mock.convert
+                .withArgs(TOTAL_P, TOTAL_A, TOTAL_B, 1)
+                .returns(TOTAL_P, TOTAL_A, TOTAL_B);
+            await fund.mock.convert
+                .withArgs(TOTAL_P, TOTAL_A, TOTAL_B, 2)
+                .returns(TOTAL_P, TOTAL_A, TOTAL_B);
+            await fund.mock.convert
+                .withArgs(USER1_P, USER1_A, USER1_B, 0)
+                .returns(USER1_P, USER1_A, USER1_B);
+            await fund.mock.convert
+                .withArgs(USER2_P, USER2_A, USER2_B, 0)
+                .returns(USER2_P, USER2_A, USER2_B);
+            advanceBlockAtTime(startEpoch + EPOCH * 9);
+        });
+
+        it("Should convert on cancellation", async function () {
+            await exchange.placeAsk(TRANCHE_A, 41, parseEther("1"), 1, 0);
+            await exchange.placeAsk(TRANCHE_A, 41, parseEther("2"), 1, 0);
+
+            // Cancel the first order after two conversions
+            advanceBlockAtTime(startEpoch + EPOCH * 30);
+            await fund.mock.getConversionSize.returns(3);
+            await expect(() => exchange.cancelAsk(1, TRANCHE_A, 41, 1)).to.callMocks(
+                {
+                    // Convert available balance from version 1 to 2
+                    func: fund.mock.convert.withArgs(
+                        USER1_P,
+                        USER1_A.sub(parseEther("3")),
+                        USER1_B,
+                        1
+                    ),
+                    rets: [11111, 2222, 333],
+                },
+                {
+                    // Convert locked balance from version 1 to 2
+                    func: fund.mock.convert.withArgs(0, parseEther("3"), 0, 1),
+                    rets: [7777, 888, 99],
+                },
+                {
+                    // Convert available balance from version 2 to 3
+                    func: fund.mock.convert.withArgs(11111, 2222, 333, 2),
+                    rets: [10000, 2000, 300],
+                },
+                {
+                    // Convert locked balance from version 2 to 3
+                    func: fund.mock.convert.withArgs(7777, 888, 99, 2),
+                    rets: [7000, 800, 90],
+                },
+                {
+                    // Convert order amount from version 1 to 3
+                    func: fund.mock.batchConvert.withArgs(0, parseEther("1"), 0, 1, 3),
+                    rets: [4000, 500, 60],
+                }
+            );
+            expect(await exchange.availableBalanceOf(TRANCHE_P, addr1)).to.equal(10000 + 4000);
+            expect(await exchange.availableBalanceOf(TRANCHE_A, addr1)).to.equal(2000 + 500);
+            expect(await exchange.availableBalanceOf(TRANCHE_B, addr1)).to.equal(300 + 60);
+        });
+
+        it("Should convert on settlement", async function () {
+            const frozenUsdc = parseEther("1");
+            const orderA = parseEther("2");
+            const reservedA = parseEther("1").mul(MAKER_RESERVE_BPS).div(10000);
+            const settledA = parseEther("1");
+            await fund.mock.extrapolateNav.returns(0, parseEther("1"), 0);
+            await exchange.connect(user2).placeAsk(TRANCHE_A, 41, orderA, 1, 0);
+            await exchange.buyA(1, 41, frozenUsdc);
+
+            // Settle the taker's trade after two conversions
+            advanceBlockAtTime(startEpoch + EPOCH * 30);
+            await fund.mock.getConversionSize.returns(3);
+            await fund.mock.convert
+                .withArgs(TOTAL_P, TOTAL_A.sub(reservedA), TOTAL_B, 1)
+                .returns(11111, 2222, 333);
+            await fund.mock.convert.withArgs(11111, 2222, 333, 2).returns(10000, 2000, 300);
+            await expect(() => exchange.settleTaker(startEpoch + EPOCH * 10)).to.callMocks(
+                {
+                    // Convert available balance from version 1 to 2
+                    func: fund.mock.convert.withArgs(USER1_P, USER1_A, USER1_B, 1),
+                    rets: [4444, 555, 66],
+                },
+                {
+                    // Convert available balance from version 2 to 3
+                    func: fund.mock.convert.withArgs(4444, 555, 66, 2),
+                    rets: [4000, 500, 60],
+                },
+                {
+                    // Convert settled amount from version 1 to 3
+                    func: fund.mock.batchConvert.withArgs(0, settledA, 0, 1, 3),
+                    rets: [700, 80, 9],
+                }
+            );
+            expect(await exchange.availableBalanceOf(TRANCHE_P, addr1)).to.equal(4000 + 700);
+            expect(await exchange.availableBalanceOf(TRANCHE_A, addr1)).to.equal(500 + 80);
+            expect(await exchange.availableBalanceOf(TRANCHE_B, addr1)).to.equal(60 + 9);
+
+            // Settle the maker's trade after two conversions
+            await expect(() =>
+                exchange.connect(user2).settleMaker(startEpoch + EPOCH * 10)
+            ).to.callMocks(
+                {
+                    // Convert available balance from version 1 to 2
+                    func: fund.mock.convert.withArgs(USER2_P, USER2_A.sub(orderA), USER2_B, 1),
+                    rets: [4444, 555, 66],
+                },
+                {
+                    // Convert locked balance from version 1 to 2
+                    func: fund.mock.convert.withArgs(0, orderA.sub(reservedA), 0, 1),
+                    rets: [7777, 888, 99],
+                },
+                {
+                    // Convert available balance from version 2 to 3
+                    func: fund.mock.convert.withArgs(4444, 555, 66, 2),
+                    rets: [4000, 500, 60],
+                },
+                {
+                    // Convert locked balance from version 2 to 3
+                    func: fund.mock.convert.withArgs(7777, 888, 99, 2),
+                    rets: [7000, 800, 90],
+                },
+                {
+                    // Convert settled amount from version 1 to 3
+                    func: fund.mock.batchConvert.withArgs(0, reservedA.sub(settledA), 0, 1, 3),
+                    rets: [100, 20, 3],
+                }
+            );
+            expect(await exchange.availableBalanceOf(TRANCHE_P, addr2)).to.equal(4000 + 100);
+            expect(await exchange.availableBalanceOf(TRANCHE_A, addr2)).to.equal(500 + 20);
+            expect(await exchange.availableBalanceOf(TRANCHE_B, addr2)).to.equal(60 + 3);
+        });
+
+        it("Should start a new order book after conversion", async function () {
+            await fund.mock.extrapolateNav.returns(0, parseEther("1"), 0);
+            await exchange.connect(user2).placeAsk(TRANCHE_A, 45, parseEther("1"), 1, 0);
+            await exchange.connect(user2).placeBid(TRANCHE_A, 37, parseEther("1"), 1, 0);
+
+            advanceBlockAtTime(startEpoch + EPOCH * 30);
+            await fund.mock.getConversionSize.returns(3);
+            await expect(exchange.buyA(1, 81, 100)).to.be.revertedWith("Invalid conversion ID");
+            await expect(exchange.sellA(1, 1, 100)).to.be.revertedWith("Invalid conversion ID");
+            await expect(exchange.buyA(3, 81, 100)).to.be.revertedWith(
+                "Nothing can be bought at the given premium-discount level"
+            );
+            await expect(exchange.sellA(3, 1, 100)).to.be.revertedWith(
+                "Nothing can be sold at the given premium-discount level"
+            );
+        });
+    });
+
+    describe("Safe transfer", function () {
+        let mockUsdc: MockContract;
+
+        beforeEach(async function () {
+            // Deploy a new Exchange using a mocked quote token
+            mockUsdc = await deployMockForName(owner, "IERC20");
+            const Exchange = await ethers.getContractFactory("Exchange");
+            exchange = await Exchange.connect(owner).deploy(
+                fund.address,
+                chess.address,
+                chessController.address,
+                mockUsdc.address,
+                6,
+                votingEscrow.address,
+                MIN_BID_AMOUNT,
+                MIN_ASK_AMOUNT,
+                MAKER_REQUIREMENT
+            );
+            exchange = exchange.connect(user1);
+            await votingEscrow.mock.getTimestampDropBelow
+                .withArgs(user1.address, MAKER_REQUIREMENT)
+                .returns(startEpoch + EPOCH * 500);
+            await exchange.applyForMaker();
+        });
+
+        it("Should check return value of transferFrom()", async function () {
+            await mockUsdc.mock.transferFrom
+                .withArgs(addr1, exchange.address, parseUsdc("10"))
+                .returns(false);
+            await expect(
+                exchange.placeBid(TRANCHE_A, 41, parseEther("10"), 0, 0)
+            ).to.be.revertedWith("Failed to transfer quote asset from account");
+        });
+
+        it("Should check return value of transfer()", async function () {
+            await mockUsdc.mock.transferFrom.returns(true);
+            await exchange.placeBid(TRANCHE_A, 41, parseEther("10"), 0, 0);
+            await mockUsdc.mock.transfer.withArgs(addr1, parseUsdc("10")).returns(false);
+            await expect(exchange.cancelBid(0, TRANCHE_A, 41, 1)).to.be.revertedWith(
+                "Failed to transfer quote asset"
+            );
+        });
+    });
+
+    describe("Miscellaneous", function () {
+        it("Should be properly initialized in a proxy's point of view", async function () {
+            expect(await exchange.fund()).to.equal(fund.address);
+            expect(await exchange.tokenP()).to.equal(shareP.address);
+            expect(await exchange.tokenA()).to.equal(shareA.address);
+            expect(await exchange.tokenB()).to.equal(shareB.address);
+            expect(await exchange.minBidAmount()).to.equal(MIN_BID_AMOUNT);
+            expect(await exchange.minAskAmount()).to.equal(MIN_ASK_AMOUNT);
+            expect(await exchange.makerRequirement()).to.equal(MAKER_REQUIREMENT);
+        });
+
+        it("Should check quote decimal places", async function () {
+            const Exchange = await ethers.getContractFactory("Exchange");
+            await expect(
+                Exchange.connect(owner).deploy(
+                    fund.address,
+                    chess.address,
+                    chessController.address,
+                    usdc.address,
+                    19,
+                    votingEscrow.address,
+                    MIN_BID_AMOUNT,
+                    MIN_ASK_AMOUNT,
+                    MAKER_REQUIREMENT
+                )
+            ).to.be.revertedWith("Quote asset decimals larger than 18");
+        });
+
+        it("Should correctly handle uninitialized best ask", async function () {
+            await fund.mock.extrapolateNav.returns(
+                parseEther("1"),
+                parseEther("1"),
+                parseEther("1")
+            );
+            await expect(exchange.buyB(0, 81, 1)).to.be.revertedWith(
+                "Nothing can be bought at the given premium-discount level"
+            );
         });
     });
 });

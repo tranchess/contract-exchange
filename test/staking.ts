@@ -181,47 +181,26 @@ describe("Staking", function () {
         staking = fixtureData.staking;
     });
 
-    describe("rewardWeight()", function () {
-        it("Should return the weighted value", async function () {
-            const p = 1000000;
-            const a = 10000;
-            const b = 100;
-            expect(await staking.rewardWeight(1000000, 10000, 100)).to.equal(
-                (p * REWARD_WEIGHT_P + a * REWARD_WEIGHT_A + b * REWARD_WEIGHT_B) / REWARD_WEIGHT_P
-            );
-        });
-    });
-
     describe("deposit()", function () {
         it("Should transfer shares and update balance", async function () {
-            // Create an empty contract
-            const Staking = await ethers.getContractFactory("StakingTestWrapper");
-            staking = await Staking.connect(owner).deploy(
-                fund.address,
-                chess.address,
-                chessController.address,
-                usdc.address
-            );
-            staking = staking.connect(user1);
-
             await expect(() => staking.deposit(TRANCHE_P, 10000)).to.callMocks({
                 func: shareP.mock.transferFrom.withArgs(addr1, staking.address, 10000),
                 rets: [true],
             });
-            expect(await staking.availableBalanceOf(TRANCHE_P, addr1)).to.equal(10000);
-            expect(await staking.totalSupply(TRANCHE_P)).to.equal(10000);
+            expect(await staking.availableBalanceOf(TRANCHE_P, addr1)).to.equal(USER1_P.add(10000));
+            expect(await staking.totalSupply(TRANCHE_P)).to.equal(TOTAL_P.add(10000));
             await expect(() => staking.deposit(TRANCHE_A, 1000)).to.callMocks({
                 func: shareA.mock.transferFrom.withArgs(addr1, staking.address, 1000),
                 rets: [true],
             });
-            expect(await staking.availableBalanceOf(TRANCHE_A, addr1)).to.equal(1000);
-            expect(await staking.totalSupply(TRANCHE_A)).to.equal(1000);
+            expect(await staking.availableBalanceOf(TRANCHE_A, addr1)).to.equal(USER1_A.add(1000));
+            expect(await staking.totalSupply(TRANCHE_A)).to.equal(TOTAL_A.add(1000));
             await expect(() => staking.deposit(TRANCHE_B, 100)).to.callMocks({
                 func: shareB.mock.transferFrom.withArgs(addr1, staking.address, 100),
                 rets: [true],
             });
-            expect(await staking.availableBalanceOf(TRANCHE_B, addr1)).to.equal(100);
-            expect(await staking.totalSupply(TRANCHE_B)).to.equal(100);
+            expect(await staking.availableBalanceOf(TRANCHE_B, addr1)).to.equal(USER1_B.add(100));
+            expect(await staking.totalSupply(TRANCHE_B)).to.equal(TOTAL_B.add(100));
         });
 
         it("Should emit an event", async function () {
@@ -237,6 +216,33 @@ describe("Staking", function () {
             await expect(staking.deposit(TRANCHE_B, 100))
                 .to.emit(staking, "Deposited")
                 .withArgs(TRANCHE_B, addr1, 100);
+        });
+    });
+
+    describe("claimAndDeposit()", function () {
+        it("Should transfer shares and update balance", async function () {
+            const primaryMarket = await deployMockForName(owner, "IPrimaryMarket");
+            await expect(() => staking.claimAndDeposit(primaryMarket.address)).to.callMocks(
+                {
+                    func: primaryMarket.mock.claim.withArgs(addr1),
+                    rets: [10000, 0],
+                },
+                {
+                    func: shareP.mock.transferFrom.withArgs(addr1, staking.address, 10000),
+                    rets: [true],
+                }
+            );
+            expect(await staking.availableBalanceOf(TRANCHE_P, addr1)).to.equal(USER1_P.add(10000));
+            expect(await staking.totalSupply(TRANCHE_P)).to.equal(TOTAL_P.add(10000));
+        });
+
+        it("Should emit an event", async function () {
+            const primaryMarket = await deployMockForName(owner, "IPrimaryMarket");
+            await primaryMarket.mock.claim.withArgs(addr1).returns(10000, 0);
+            await shareP.mock.transferFrom.withArgs(addr1, staking.address, 10000).returns(true);
+            await expect(staking.claimAndDeposit(primaryMarket.address))
+                .to.emit(staking, "Deposited")
+                .withArgs(TRANCHE_P, addr1, 10000);
         });
     });
 
@@ -408,7 +414,7 @@ describe("Staking", function () {
         });
     });
 
-    describe("rewardWeight", function () {
+    describe("rewardWeight()", function () {
         it("Should calculate reward weight", async function () {
             expect(await staking.rewardWeight(1000, 0, 0)).to.equal(1000);
             expect(await staking.rewardWeight(0, 1000, 0)).to.equal(
@@ -416,6 +422,17 @@ describe("Staking", function () {
             );
             expect(await staking.rewardWeight(0, 0, 1000)).to.equal(
                 BigNumber.from(1000 * REWARD_WEIGHT_B).div(REWARD_WEIGHT_P)
+            );
+        });
+
+        it("Should return the weighted value", async function () {
+            const p = 1000000;
+            const a = 10000;
+            const b = 100;
+            expect(await staking.rewardWeight(1000000, 10000, 100)).to.equal(
+                BigNumber.from(p * REWARD_WEIGHT_P + a * REWARD_WEIGHT_A + b * REWARD_WEIGHT_B).div(
+                    REWARD_WEIGHT_P
+                )
             );
         });
 

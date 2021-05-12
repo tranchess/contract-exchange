@@ -252,10 +252,10 @@ abstract contract Staking is ITrancheIndex {
     ///                      or zero for the latest version
     function refreshBalance(address account, uint256 targetVersion) external {
         uint256 conversionSize = fund.getConversionSize();
-        if (targetVersion > 0) {
-            require(targetVersion <= conversionSize, "Target version out of bound");
-        } else {
+        if (targetVersion == 0) {
             targetVersion = conversionSize;
+        } else {
+            require(targetVersion <= conversionSize, "Target version out of bound");
         }
         _checkpoint(conversionSize);
         _userCheckpoint(account, targetVersion);
