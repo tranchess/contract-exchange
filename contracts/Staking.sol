@@ -44,7 +44,6 @@ abstract contract Staking is ITrancheIndex {
     IChess public immutable chess;
 
     uint256 private _rate;
-    uint256 private _futureEpoch;
 
     /// @notice The controller contract.
     IChessController public immutable chessController;
@@ -100,7 +99,7 @@ abstract contract Staking is ITrancheIndex {
         quoteAssetAddress = quoteAssetAddress_;
         _checkpointTimestamp = block.timestamp;
 
-        (_futureEpoch, _rate) = IChess(chess_).futureDayTimeWrite();
+        _rate = IChess(chess_).getRate(block.timestamp);
     }
 
     /// @notice Return end timestamp of the trading week containing a given timestamp.
@@ -486,7 +485,6 @@ abstract contract Staking is ITrancheIndex {
         } else {
             conversionTimestamp = type(uint256).max;
         }
-        uint256 futureEpoch = _futureEpoch;
         uint256 rate = _rate;
         uint256 totalSupplyP = _totalSupplies[TRANCHE_P];
         uint256 totalSupplyA = _totalSupplies[TRANCHE_A];
@@ -495,8 +493,7 @@ abstract contract Staking is ITrancheIndex {
         uint256 timestamp_ = timestamp; // avoid stack too deep
 
         for (uint256 i = 0; i < MAX_ITERATIONS && timestamp_ < block.timestamp; i++) {
-            uint256 endTimestamp =
-                futureEpoch.min(conversionTimestamp).min(endWeek).min(block.timestamp);
+            uint256 endTimestamp = conversionTimestamp.min(endWeek).min(block.timestamp);
 
             if (weight > 0) {
                 integral = integral.add(
@@ -527,10 +524,8 @@ abstract contract Staking is ITrancheIndex {
                     conversionTimestamp = type(uint256).max;
                 }
             }
-            if (endTimestamp == futureEpoch) {
-                (futureEpoch, rate) = chess.futureDayTimeWrite();
-            }
             if (endTimestamp == endWeek) {
+                rate = chess.getRate(endWeek);
                 weeklyPercentage = chessController.getFundRelativeWeight(address(this), endWeek);
                 endWeek += 1 weeks;
             }
@@ -540,8 +535,7 @@ abstract contract Staking is ITrancheIndex {
 
         _checkpointTimestamp = block.timestamp;
         _invTotalWeightIntegral = integral;
-        if (_futureEpoch != futureEpoch) {
-            _futureEpoch = futureEpoch;
+        if (_rate != rate) {
             _rate = rate;
         }
         if (_totalSupplyVersion != conversionSize) {

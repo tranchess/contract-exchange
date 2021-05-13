@@ -13,6 +13,7 @@ const TRANCHE_B = 2;
 const REWARD_WEIGHT_P = 3;
 const REWARD_WEIGHT_A = 4;
 const REWARD_WEIGHT_B = 2;
+const SETTLEMENT_TIME = 3600 * 14; // UTC time 14:00 every day
 
 // Initial balance:
 // User 1: 400 P + 120 A + 180 B
@@ -98,7 +99,10 @@ describe("Staking", function () {
 
         const startEpoch = (await ethers.provider.getBlock("latest")).timestamp;
         advanceBlockAtTime(Math.floor(startEpoch / WEEK) * WEEK + WEEK);
-        const endWeek = Math.floor(startEpoch / WEEK) * WEEK + WEEK * 2;
+        const endWeek =
+            Math.floor((startEpoch + WEEK - SETTLEMENT_TIME) / WEEK) * WEEK +
+            SETTLEMENT_TIME +
+            WEEK * 2;
         const nextRateUpdateTime = endWeek + WEEK * 10;
 
         const fund = await deployMockForName(owner, "IFund");
@@ -112,7 +116,6 @@ describe("Staking", function () {
 
         const MockChess = await ethers.getContractFactory("MockChess");
         const chess = await MockChess.connect(owner).deploy("CHESS", "CHESS", 18);
-        await chess.set(nextRateUpdateTime, parseEther("0"));
 
         const chessController = await deployMockForName(owner, "IChessController");
         await chessController.mock.getFundRelativeWeight.returns(parseEther("1"));
@@ -780,8 +783,8 @@ describe("Staking", function () {
             await fund.mock.getConversionTimestamp
                 .withArgs(0)
                 .returns(nextRateUpdateTime + 100 * WEEK);
-            await chess.set(nextRateUpdateTime + 100 * WEEK, parseEther("1"));
-            advanceBlockAtTime(nextRateUpdateTime);
+            await chess.set(nextRateUpdateTime, parseEther("1"));
+            await advanceBlockAtTime(nextRateUpdateTime);
 
             rate1 = parseEther("1").mul(USER1_WEIGHT).div(TOTAL_WEIGHT);
             rate2 = parseEther("1").mul(USER2_WEIGHT).div(TOTAL_WEIGHT);
@@ -905,6 +908,80 @@ describe("Staking", function () {
             const { rewards1, rewards2 } = rewardsAfterReducingTotal(1234, 5678);
             expect(await staking.callStatic["claimableRewards"](addr1)).to.equal(rewards1);
             expect(await staking.callStatic["claimableRewards"](addr2)).to.equal(rewards2);
+        });
+
+        it("Should calculate rewards for two users in multiple weeks", async function () {
+            await chess.set(nextRateUpdateTime + WEEK, parseEther("2"));
+            await chess.set(nextRateUpdateTime + WEEK * 2, parseEther("3"));
+            await chess.set(nextRateUpdateTime + WEEK * 3, parseEther("4"));
+
+            let balance1 = rate1.mul(WEEK);
+            let balance2 = rate2.mul(WEEK);
+            await advanceBlockAtTime(nextRateUpdateTime + WEEK);
+            expect(await staking.callStatic["claimableRewards"](addr1)).to.equal(balance1);
+            expect(await staking.callStatic["claimableRewards"](addr2)).to.equal(balance2);
+
+            balance1 = balance1.add(rate1.mul(WEEK).mul(2));
+            balance2 = balance2.add(rate2.mul(WEEK).mul(2));
+            await setNextBlockTime(nextRateUpdateTime + WEEK * 2);
+            await expect(() => staking.claimRewards(addr1)).to.changeTokenBalance(
+                chess,
+                user1,
+                balance1
+            );
+
+            balance1 = balance1
+                .add(rate1.mul(WEEK).mul(3))
+                .sub(rate1.mul(WEEK).mul(2))
+                .sub(rate1.mul(WEEK));
+            balance2 = balance2.add(rate2.mul(WEEK).mul(3));
+            await advanceBlockAtTime(nextRateUpdateTime + WEEK * 3);
+            expect(await staking.callStatic["claimableRewards"](addr1)).to.equal(balance1);
+            expect(await staking.callStatic["claimableRewards"](addr2)).to.equal(balance2);
+
+            balance1 = balance1.add(rate1.mul(WEEK).mul(4));
+            balance2 = balance2.add(rate2.mul(WEEK).mul(4));
+            await setNextBlockTime(nextRateUpdateTime + WEEK * 4);
+            await expect(() => staking.claimRewards(addr1)).to.changeTokenBalance(
+                chess,
+                user1,
+                balance1
+            );
+        });
+
+        it("Should calculate rewards with conversion in two weeks", async function () {
+            await chess.set(nextRateUpdateTime + WEEK * 1, parseEther("3"));
+            await chess.set(nextRateUpdateTime + WEEK * 2, parseEther("5"));
+            await fund.mock.getConversionSize.returns(1);
+            await fund.mock.getConversionTimestamp
+                .withArgs(0)
+                .returns(nextRateUpdateTime + WEEK + 100);
+            await fund.mock.convert
+                .withArgs(TOTAL_P, TOTAL_A, TOTAL_B, 0)
+                .returns(TOTAL_P.mul(4), TOTAL_A.mul(4), TOTAL_B.mul(4));
+            await fund.mock.convert
+                .withArgs(TOTAL_P.mul(4), TOTAL_A.mul(4), TOTAL_B.mul(4), 1)
+                .returns(TOTAL_P.mul(15), TOTAL_A.mul(15), TOTAL_B.mul(15));
+            await fund.mock.convert
+                .withArgs(USER1_P, USER1_A, USER1_B, 0)
+                .returns(USER1_P.mul(2), USER1_A.mul(2), USER1_B.mul(2));
+            await fund.mock.convert
+                .withArgs(USER1_P.mul(2), USER1_A.mul(2), USER1_B.mul(2), 1)
+                .returns(USER1_P.mul(3), USER1_A.mul(3), USER1_B.mul(3));
+            await advanceBlockAtTime(nextRateUpdateTime + WEEK * 2 + 100);
+
+            const rewardWeek0Version0 = rate1.mul(WEEK);
+            const rewardWeek1Version0 = rate1.mul(3).mul(100);
+            const rewardWeek1Version1 = rate1
+                .mul(3)
+                .mul(WEEK - 100)
+                .div(2);
+            const rewardWeek2Version1 = rate1.mul(5).mul(100).div(2);
+            const expectedRewards = rewardWeek0Version0
+                .add(rewardWeek1Version0)
+                .add(rewardWeek1Version1)
+                .add(rewardWeek2Version1);
+            expect(await staking.callStatic["claimableRewards"](addr1)).to.equal(expectedRewards);
         });
 
         it("Should handle multiple checkpoints in the same block correctly", async function () {

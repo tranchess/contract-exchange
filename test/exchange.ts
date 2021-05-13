@@ -103,7 +103,7 @@ describe("Exchange", function () {
         await twapOracle.mock.getTwap.returns(parseEther("1000"));
 
         const chess = await deployMockForName(owner, "IChess");
-        await chess.mock.futureDayTimeWrite.returns(startEpoch + 100 * 86400, 0);
+        await chess.mock.getRate.returns(0);
 
         const chessController = await deployMockForName(owner, "IChessController");
         await chessController.mock.getFundRelativeWeight.returns(parseEther("1"));

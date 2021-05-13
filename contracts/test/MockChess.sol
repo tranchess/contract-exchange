@@ -4,8 +4,7 @@ pragma solidity >=0.6.10 <0.8.0;
 import "./MockToken.sol";
 
 contract MockChess is MockToken {
-    uint256 public _nextEpoch;
-    uint256 public _rate;
+    mapping(uint256 => uint256) public rates;
 
     constructor(
         string memory name,
@@ -13,13 +12,11 @@ contract MockChess is MockToken {
         uint8 decimals
     ) public MockToken(name, symbol, decimals) {}
 
-    function set(uint256 nextEpoch, uint256 rate) external {
-        _nextEpoch = nextEpoch;
-        _rate = rate;
+    function set(uint256 timestamp, uint256 rate) external {
+        rates[timestamp] = rate;
     }
 
-    function futureDayTimeWrite() external view returns (uint256 nextEpoch, uint256 rate) {
-        nextEpoch = _nextEpoch;
-        rate = _rate;
+    function getRate(uint256 timestamp) external view returns (uint256) {
+        return rates[timestamp];
     }
 }
