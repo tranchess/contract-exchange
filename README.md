@@ -1,6 +1,6 @@
 This repo is **deprecated** and will not be further maintained.
 
-[Tranchess-Core](https://github.com/tranchess/tranchess-core/) is the new monorepo under active development.
+[Tranchess-Core](https://github.com/tranchess/contract-core/) is the new monorepo under active development.
 
 ---
 
