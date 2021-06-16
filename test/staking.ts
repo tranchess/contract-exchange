@@ -48,6 +48,9 @@ async function setNextBlockTime(time: number) {
     await ethers.provider.send("evm_setNextBlockTimestamp", [time]);
 }
 
+/**
+ * Note that failed transactions are silently ignored when automining is disabled.
+ */
 async function setAutomine(flag: boolean) {
     await ethers.provider.send("evm_setAutomine", [flag]);
 }
@@ -59,6 +62,7 @@ describe("Staking", function () {
 
     interface FixtureData {
         readonly wallets: FixtureWalletMap;
+        readonly checkpointTimestamp: number;
         readonly fund: MockContract;
         readonly shareP: MockContract;
         readonly shareA: MockContract;
@@ -72,6 +76,7 @@ describe("Staking", function () {
     let currentFixture: Fixture<FixtureData>;
     let fixtureData: FixtureData;
 
+    let checkpointTimestamp: number;
     let user1: Wallet;
     let user2: Wallet;
     let owner: Wallet;
@@ -132,12 +137,14 @@ describe("Staking", function () {
         await staking.connect(user2).deposit(TRANCHE_P, USER2_P);
         await staking.connect(user2).deposit(TRANCHE_A, USER2_A);
         await staking.connect(user2).deposit(TRANCHE_B, USER2_B);
+        const checkpointTimestamp = (await ethers.provider.getBlock("latest")).timestamp;
         await shareP.mock.transferFrom.revertsWithReason("Mock on the method is not initialized");
         await shareA.mock.transferFrom.revertsWithReason("Mock on the method is not initialized");
         await shareB.mock.transferFrom.revertsWithReason("Mock on the method is not initialized");
 
         return {
             wallets: { user1, user2, owner },
+            checkpointTimestamp,
             fund,
             shareP,
             shareA,
@@ -155,6 +162,7 @@ describe("Staking", function () {
 
     beforeEach(async function () {
         fixtureData = await loadFixture(currentFixture);
+        checkpointTimestamp = fixtureData.checkpointTimestamp;
         user1 = fixtureData.wallets.user1;
         user2 = fixtureData.wallets.user2;
         owner = fixtureData.wallets.owner;
@@ -416,8 +424,287 @@ describe("Staking", function () {
         });
     });
 
+    describe("Conversion", function () {
+        describe("availableBalanceOf()", function () {
+            it("Should return converted balance", async function () {
+                await fund.mock.getConversionSize.returns(3);
+                await fund.mock.batchConvert
+                    .withArgs(USER1_P, USER1_A, USER1_B, 0, 3)
+                    .returns(123, 456, 789);
+                expect(await staking.availableBalanceOf(TRANCHE_P, addr1)).to.equal(123);
+                expect(await staking.availableBalanceOf(TRANCHE_A, addr1)).to.equal(456);
+                expect(await staking.availableBalanceOf(TRANCHE_B, addr1)).to.equal(789);
+            });
+
+            it("Should not perform conversion if the original balance is zero (for P)", async function () {
+                await staking.lock(TRANCHE_P, addr1, USER1_P);
+                await staking.lock(TRANCHE_A, addr1, USER1_A);
+                await staking.lock(TRANCHE_B, addr1, USER1_B);
+                await fund.mock.getConversionSize.returns(3);
+                expect(await staking.availableBalanceOf(TRANCHE_P, addr1)).to.equal(0);
+            });
+
+            it("Should not perform conversion if the original balance is zero (for A)", async function () {
+                await staking.lock(TRANCHE_A, addr1, USER1_A);
+                await fund.mock.getConversionSize.returns(3);
+                expect(await staking.availableBalanceOf(TRANCHE_A, addr1)).to.equal(0);
+            });
+
+            it("Should not perform conversion if the original balance is zero (for B)", async function () {
+                await staking.lock(TRANCHE_B, addr1, USER1_B);
+                await fund.mock.getConversionSize.returns(3);
+                expect(await staking.availableBalanceOf(TRANCHE_B, addr1)).to.equal(0);
+            });
+        });
+
+        describe("lockedBalanceOf()", function () {
+            it("Should return converted balance", async function () {
+                await staking.lock(TRANCHE_P, addr1, USER1_P.div(2));
+                await staking.lock(TRANCHE_A, addr1, USER1_A.div(3));
+                await staking.lock(TRANCHE_B, addr1, USER1_B.div(5));
+                await fund.mock.getConversionSize.returns(4);
+                await fund.mock.batchConvert
+                    .withArgs(USER1_P.div(2), USER1_A.div(3), USER1_B.div(5), 0, 4)
+                    .returns(123, 456, 789);
+                expect(await staking.lockedBalanceOf(TRANCHE_P, addr1)).to.equal(123);
+                expect(await staking.lockedBalanceOf(TRANCHE_A, addr1)).to.equal(456);
+                expect(await staking.lockedBalanceOf(TRANCHE_B, addr1)).to.equal(789);
+            });
+
+            it("Should not perform conversion if the original balance is zero (for P)", async function () {
+                await fund.mock.getConversionSize.returns(4);
+                expect(await staking.lockedBalanceOf(TRANCHE_P, addr1)).to.equal(0);
+            });
+
+            it("Should not perform conversion if the original balance is zero (for A)", async function () {
+                await staking.lock(TRANCHE_P, addr1, USER1_P);
+                await staking.lock(TRANCHE_B, addr1, USER1_B);
+                await fund.mock.getConversionSize.returns(4);
+                expect(await staking.lockedBalanceOf(TRANCHE_A, addr1)).to.equal(0);
+            });
+
+            it("Should not perform conversion if the original balance is zero (for B)", async function () {
+                await staking.lock(TRANCHE_P, addr1, USER1_P);
+                await staking.lock(TRANCHE_A, addr1, USER1_A);
+                await fund.mock.getConversionSize.returns(4);
+                expect(await staking.lockedBalanceOf(TRANCHE_B, addr1)).to.equal(0);
+            });
+        });
+
+        describe("totalSupply()", function () {
+            it("Should return converted total supply", async function () {
+                await fund.mock.getConversionSize.returns(2);
+                await fund.mock.batchConvert
+                    .withArgs(TOTAL_P, TOTAL_A, TOTAL_B, 0, 2)
+                    .returns(123, 456, 789);
+                expect(await staking.totalSupply(TRANCHE_P)).to.equal(123);
+                expect(await staking.totalSupply(TRANCHE_A)).to.equal(456);
+                expect(await staking.totalSupply(TRANCHE_B)).to.equal(789);
+            });
+        });
+
+        describe("refreshBalance()", function () {
+            it("Non-zero targetVersion", async function () {
+                await fund.mock.getConversionSize.returns(3);
+                await fund.mock.getConversionTimestamp.withArgs(0).returns(checkpointTimestamp + 1);
+                await fund.mock.getConversionTimestamp.withArgs(1).returns(checkpointTimestamp + 2);
+                await fund.mock.getConversionTimestamp.withArgs(2).returns(checkpointTimestamp + 3);
+                await advanceBlockAtTime(checkpointTimestamp + 100);
+                await expect(() => staking.refreshBalance(addr1, 1)).to.callMocks(
+                    {
+                        func: fund.mock.convert.withArgs(TOTAL_P, TOTAL_A, TOTAL_B, 0),
+                        rets: [10000, 1000, 100],
+                    },
+                    {
+                        func: fund.mock.convert.withArgs(10000, 1000, 100, 1),
+                        rets: [20000, 2000, 200],
+                    },
+                    {
+                        func: fund.mock.convert.withArgs(20000, 2000, 200, 2),
+                        rets: [30000, 3000, 300],
+                    },
+                    {
+                        func: fund.mock.convert.withArgs(USER1_P, USER1_A, USER1_B, 0),
+                        rets: [123, 456, 789],
+                    }
+                );
+                expect(await staking.balanceVersion(addr1)).to.equal(1);
+                await expect(() => staking.refreshBalance(addr1, 3)).to.callMocks(
+                    {
+                        func: fund.mock.convert.withArgs(123, 456, 789, 1),
+                        rets: [1230, 4560, 7890],
+                    },
+                    {
+                        func: fund.mock.convert.withArgs(1230, 4560, 7890, 2),
+                        rets: [12300, 45600, 78900],
+                    }
+                );
+                expect(await staking.balanceVersion(addr1)).to.equal(3);
+                expect(await staking.availableBalanceOf(TRANCHE_P, addr1)).to.equal(12300);
+                expect(await staking.availableBalanceOf(TRANCHE_A, addr1)).to.equal(45600);
+                expect(await staking.availableBalanceOf(TRANCHE_B, addr1)).to.equal(78900);
+            });
+
+            it("Zero targetVersion", async function () {
+                await fund.mock.getConversionSize.returns(2);
+                await fund.mock.getConversionTimestamp.withArgs(0).returns(checkpointTimestamp + 1);
+                await fund.mock.getConversionTimestamp.withArgs(1).returns(checkpointTimestamp + 2);
+                await advanceBlockAtTime(checkpointTimestamp + 100);
+                await expect(() => staking.refreshBalance(addr1, 0)).to.callMocks(
+                    {
+                        func: fund.mock.convert.withArgs(TOTAL_P, TOTAL_A, TOTAL_B, 0),
+                        rets: [10000, 1000, 100],
+                    },
+                    {
+                        func: fund.mock.convert.withArgs(10000, 1000, 100, 1),
+                        rets: [20000, 2000, 200],
+                    },
+                    {
+                        func: fund.mock.convert.withArgs(USER1_P, USER1_A, USER1_B, 0),
+                        rets: [123, 456, 789],
+                    },
+                    {
+                        func: fund.mock.convert.withArgs(123, 456, 789, 1),
+                        rets: [1230, 4560, 7890],
+                    }
+                );
+                expect(await staking.balanceVersion(addr1)).to.equal(2);
+                expect(await staking.availableBalanceOf(TRANCHE_P, addr1)).to.equal(1230);
+                expect(await staking.availableBalanceOf(TRANCHE_A, addr1)).to.equal(4560);
+                expect(await staking.availableBalanceOf(TRANCHE_B, addr1)).to.equal(7890);
+            });
+
+            it("Should make no change if targetVersion is older", async function () {
+                await fund.mock.getConversionSize.returns(2);
+                await fund.mock.getConversionTimestamp.withArgs(0).returns(checkpointTimestamp + 1);
+                await fund.mock.getConversionTimestamp.withArgs(1).returns(checkpointTimestamp + 2);
+                await advanceBlockAtTime(checkpointTimestamp + 100);
+                await expect(() => staking.refreshBalance(addr1, 2)).to.callMocks(
+                    {
+                        func: fund.mock.convert.withArgs(TOTAL_P, TOTAL_A, TOTAL_B, 0),
+                        rets: [10000, 1000, 100],
+                    },
+                    {
+                        func: fund.mock.convert.withArgs(10000, 1000, 100, 1),
+                        rets: [20000, 2000, 200],
+                    },
+                    {
+                        func: fund.mock.convert.withArgs(USER1_P, USER1_A, USER1_B, 0),
+                        rets: [123, 456, 789],
+                    },
+                    {
+                        func: fund.mock.convert.withArgs(123, 456, 789, 1),
+                        rets: [1230, 4560, 7890],
+                    }
+                );
+
+                await staking.refreshBalance(addr1, 1);
+                expect(await staking.availableBalanceOf(TRANCHE_P, addr1)).to.equal(1230);
+                expect(await staking.availableBalanceOf(TRANCHE_A, addr1)).to.equal(4560);
+                expect(await staking.availableBalanceOf(TRANCHE_B, addr1)).to.equal(7890);
+            });
+
+            it("Should convert both available and locked balance", async function () {
+                await staking.lock(TRANCHE_P, addr1, 1000);
+                await staking.lock(TRANCHE_A, addr1, 100);
+                await staking.lock(TRANCHE_B, addr1, 10);
+                await fund.mock.getConversionSize.returns(1);
+                await fund.mock.getConversionTimestamp.withArgs(0).returns(checkpointTimestamp + 1);
+                await advanceBlockAtTime(checkpointTimestamp + 100);
+                await expect(() => staking.refreshBalance(addr1, 1)).to.callMocks(
+                    {
+                        func: fund.mock.convert.withArgs(TOTAL_P, TOTAL_A, TOTAL_B, 0),
+                        rets: [10000, 1000, 100],
+                    },
+                    {
+                        func: fund.mock.convert.withArgs(
+                            USER1_P.sub(1000),
+                            USER1_A.sub(100),
+                            USER1_B.sub(10),
+                            0
+                        ),
+                        rets: [123, 456, 789],
+                    },
+                    {
+                        func: fund.mock.convert.withArgs(1000, 100, 10, 0),
+                        rets: [12, 34, 56],
+                    }
+                );
+                expect(await staking.availableBalanceOf(TRANCHE_P, addr1)).to.equal(123);
+                expect(await staking.availableBalanceOf(TRANCHE_A, addr1)).to.equal(456);
+                expect(await staking.availableBalanceOf(TRANCHE_B, addr1)).to.equal(789);
+                expect(await staking.lockedBalanceOf(TRANCHE_P, addr1)).to.equal(12);
+                expect(await staking.lockedBalanceOf(TRANCHE_A, addr1)).to.equal(34);
+                expect(await staking.lockedBalanceOf(TRANCHE_B, addr1)).to.equal(56);
+            });
+
+            it("Should convert zero balance", async function () {
+                await fund.mock.getConversionSize.returns(1);
+                await fund.mock.getConversionTimestamp.withArgs(0).returns(checkpointTimestamp + 1);
+                await advanceBlockAtTime(checkpointTimestamp + 100);
+                await expect(() => staking.refreshBalance(owner.address, 1)).to.callMocks({
+                    func: fund.mock.convert.withArgs(TOTAL_P, TOTAL_A, TOTAL_B, 0),
+                    rets: [10000, 1000, 100],
+                });
+                expect(await staking.availableBalanceOf(TRANCHE_P, owner.address)).to.equal(0);
+                expect(await staking.availableBalanceOf(TRANCHE_A, owner.address)).to.equal(0);
+                expect(await staking.availableBalanceOf(TRANCHE_B, owner.address)).to.equal(0);
+                expect(await staking.lockedBalanceOf(TRANCHE_P, owner.address)).to.equal(0);
+                expect(await staking.lockedBalanceOf(TRANCHE_A, owner.address)).to.equal(0);
+                expect(await staking.lockedBalanceOf(TRANCHE_B, owner.address)).to.equal(0);
+            });
+
+            it("Should revert on out-of-bound target version", async function () {
+                await fund.mock.getConversionSize.returns(1);
+                await expect(staking.refreshBalance(addr1, 2)).to.be.revertedWith(
+                    "Target version out of bound"
+                );
+            });
+        });
+
+        describe("convertAndClearTrade()", function () {
+            it("Should convert trade before clearing it", async function () {
+                await fund.mock.getConversionSize.returns(1);
+                await fund.mock.getConversionTimestamp.withArgs(0).returns(checkpointTimestamp + 1);
+                await fund.mock.convert
+                    .withArgs(TOTAL_P, TOTAL_A, TOTAL_B, 0)
+                    .returns(10000, 1000, 100);
+                await fund.mock.convert
+                    .withArgs(USER1_P, USER1_A, USER1_B, 0)
+                    .returns(8000, 800, 80);
+                await fund.mock.batchConvert.withArgs(1230, 4560, 7890, 0, 1).returns(123, 45, 0);
+                await staking.convertAndClearTrade(addr1, 1230, 4560, 7890, 0);
+                expect(await staking.availableBalanceOf(TRANCHE_P, addr1)).to.equal(8123);
+                expect(await staking.availableBalanceOf(TRANCHE_A, addr1)).to.equal(845);
+                expect(await staking.availableBalanceOf(TRANCHE_B, addr1)).to.equal(80);
+            });
+        });
+
+        describe("convertAndUnlock()", function () {
+            it("Should convert order amounts before unlock", async function () {
+                await staking.lock(TRANCHE_A, addr1, 3000);
+                await fund.mock.getConversionSize.returns(1);
+                await fund.mock.getConversionTimestamp.withArgs(0).returns(checkpointTimestamp + 1);
+                await fund.mock.convert
+                    .withArgs(TOTAL_P, TOTAL_A, TOTAL_B, 0)
+                    .returns(10000, 1000, 100);
+                await fund.mock.convert
+                    .withArgs(USER1_P, USER1_A.sub(3000), USER1_B, 0)
+                    .returns(8000, 800, 80);
+                await fund.mock.convert.withArgs(0, 3000, 0, 0).returns(900, 90, 0);
+                await fund.mock.batchConvert.withArgs(0, 2000, 0, 0, 1).returns(600, 60, 0);
+                await staking.convertAndUnlock(addr1, 0, 2000, 0, 0);
+                expect(await staking.availableBalanceOf(TRANCHE_P, addr1)).to.equal(8600);
+                expect(await staking.availableBalanceOf(TRANCHE_A, addr1)).to.equal(860);
+                expect(await staking.availableBalanceOf(TRANCHE_B, addr1)).to.equal(80);
+                expect(await staking.lockedBalanceOf(TRANCHE_P, addr1)).to.equal(300);
+                expect(await staking.lockedBalanceOf(TRANCHE_A, addr1)).to.equal(30);
+                expect(await staking.lockedBalanceOf(TRANCHE_B, addr1)).to.equal(0);
+            });
+        });
+    });
+
     describe("Rewards", function () {
-        let checkpointTimestamp: number;
         let rate1: BigNumber;
         let rate2: BigNumber;
 
@@ -612,9 +899,76 @@ describe("Staking", function () {
             expect(await staking.callStatic["claimableRewards"](addr1)).to.equal(rewards1);
             expect(await staking.callStatic["claimableRewards"](addr2)).to.equal(rewards2);
         });
-    });
 
-    describe("Conversion", function () {
-        //
+        it("Should calculate rewards after each conversion", async function () {
+            await fund.mock.getConversionSize.returns(2);
+            await fund.mock.getConversionTimestamp.withArgs(0).returns(checkpointTimestamp + 100);
+            await fund.mock.getConversionTimestamp.withArgs(1).returns(checkpointTimestamp + 400);
+            await fund.mock.convert
+                .withArgs(TOTAL_P, TOTAL_A, TOTAL_B, 0)
+                .returns(TOTAL_P.mul(4), TOTAL_A.mul(4), TOTAL_B.mul(4));
+            await fund.mock.convert
+                .withArgs(TOTAL_P.mul(4), TOTAL_A.mul(4), TOTAL_B.mul(4), 1)
+                .returns(TOTAL_P.mul(15), TOTAL_A.mul(15), TOTAL_B.mul(15));
+            await fund.mock.convert
+                .withArgs(USER1_P, USER1_A, USER1_B, 0)
+                .returns(USER1_P.mul(2), USER1_A.mul(2), USER1_B.mul(2));
+            await fund.mock.convert
+                .withArgs(USER1_P.mul(2), USER1_A.mul(2), USER1_B.mul(2), 1)
+                .returns(USER1_P.mul(3), USER1_A.mul(3), USER1_B.mul(3));
+            await advanceBlockAtTime(checkpointTimestamp + 1000);
+
+            const rewardVersion0 = rate1.mul(100);
+            const rewardVersion1 = rate1.div(2).mul(300); // Half (2/4) rate1 after the first conversion
+            const rewardVersion2 = rate1.div(5).mul(600); // One-fifth (3/15) rate1 after the first conversion
+            const expectedRewards = rewardVersion0.add(rewardVersion1).add(rewardVersion2);
+            expect(await staking.callStatic["claimableRewards"](addr1)).to.equal(expectedRewards);
+        });
+
+        it("Should be able to handle zero total supplies between two conversions", async function () {
+            // Withdraw all P and A shares (in a single block to make rewards calculation easy)
+            await shareP.mock.transfer.returns(true);
+            await shareA.mock.transfer.returns(true);
+            await shareP.mock.transferFrom.returns(true);
+            await setAutomine(false);
+            await staking.withdraw(TRANCHE_P, USER1_P);
+            await staking.withdraw(TRANCHE_A, USER1_A);
+            await staking.connect(user2).withdraw(TRANCHE_P, USER2_P);
+            await staking.connect(user2).withdraw(TRANCHE_A, USER2_A);
+            await advanceBlockAtTime(checkpointTimestamp + 100);
+            await setAutomine(true);
+            // Rewards before the withdrawals
+            let user1Rewards = rate1.mul(100);
+            let user2Rewards = rate2.mul(100);
+
+            // Convert any B shares to zero in the first conversion.
+            await fund.mock.getConversionSize.returns(2);
+            await fund.mock.getConversionTimestamp.withArgs(0).returns(checkpointTimestamp + 400);
+            await fund.mock.getConversionTimestamp.withArgs(1).returns(checkpointTimestamp + 1000);
+            await fund.mock.convert.withArgs(0, 0, TOTAL_B, 0).returns(0, 0, 0);
+            await fund.mock.convert.withArgs(0, 0, USER1_B, 0).returns(0, 0, 0);
+            await fund.mock.convert.withArgs(0, 0, USER2_B, 0).returns(0, 0, 0);
+            await fund.mock.convert.withArgs(0, 0, 0, 1).returns(0, 0, 0);
+            // Add rewards till the first conversion
+            user1Rewards = user1Rewards.add(parseEther("1").mul(300).mul(USER1_B).div(TOTAL_B));
+            user2Rewards = user2Rewards.add(parseEther("1").mul(300).mul(USER2_B).div(TOTAL_B));
+
+            // User1 deposit some P shares
+            await setNextBlockTime(checkpointTimestamp + 2000);
+            await staking.deposit(TRANCHE_P, parseEther("1"));
+
+            // User2 deposit some P shares
+            await setNextBlockTime(checkpointTimestamp + 3500);
+            await staking.connect(user2).deposit(TRANCHE_P, parseEther("1"));
+            // Add rewards before user2's deposit
+            user1Rewards = user1Rewards.add(parseEther("1").mul(1500));
+
+            await advanceBlockAtTime(checkpointTimestamp + 5600);
+            // The two users evenly split rewards after user2's deposit
+            user1Rewards = user1Rewards.add(parseEther("0.5").mul(2100));
+            user2Rewards = user2Rewards.add(parseEther("0.5").mul(2100));
+            expect(await staking.callStatic["claimableRewards"](addr1)).to.equal(user1Rewards);
+            expect(await staking.callStatic["claimableRewards"](addr2)).to.equal(user2Rewards);
+        });
     });
 });
