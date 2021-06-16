@@ -7,8 +7,8 @@ pragma solidity >=0.6.10 <0.8.0;
 /// @param next Index of the next order at the same premium-discount level,
 ///             or zero if this is the last one
 /// @param maker Account placing this order
-/// @param amount Original amount of the order, which is amount of quote asset for a bid order,
-///               or amount of base asset for an ask order
+/// @param amount Original amount of the order, which is amount of quote asset with 18 decimal places
+///               for a bid order, or amount of base asset for an ask order
 /// @param conversionID Conversion ID when the order is placed
 /// @param fillable Currently fillable amount
 struct Order {
@@ -47,7 +47,7 @@ library LibOrderQueue {
     /// @notice Append a new order to the queue
     /// @param queue Order queue
     /// @param maker Maker address
-    /// @param amount Amount to place in the order
+    /// @param amount Amount to place in the order with 18 decimal places
     /// @param conversionID Current conversion ID
     /// @return Index of the order in the order queue
     function append(

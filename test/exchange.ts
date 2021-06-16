@@ -15,20 +15,20 @@ const TRANCHE_P = 0;
 const TRANCHE_A = 1;
 const TRANCHE_B = 2;
 
-const USER1_USDC = parseUsdc("100000");
+const USER1_USDC = parseEther("100000");
 const USER1_P = parseEther("10000");
 const USER1_A = parseEther("20000");
 const USER1_B = parseEther("30000");
-const USER2_USDC = parseUsdc("200000");
+const USER2_USDC = parseEther("200000");
 const USER2_P = parseEther("20000");
 const USER2_A = parseEther("40000");
 const USER2_B = parseEther("60000");
-const USER3_USDC = parseUsdc("300000");
+const USER3_USDC = parseEther("300000");
 const USER3_P = parseEther("30000");
 const USER3_A = parseEther("60000");
 const USER3_B = parseEther("90000");
-const MIN_BID_AMOUNT = parseUsdc("1");
-const MIN_ASK_AMOUNT = parseEther("1");
+const MIN_BID_AMOUNT = parseEther("0.8");
+const MIN_ASK_AMOUNT = parseEther("0.9");
 const MAKER_REQUIREMENT = parseEther("10000");
 
 async function advanceBlockAtTime(time: number) {
@@ -146,12 +146,12 @@ describe("Exchange", function () {
         await shareP.mock.transferFrom.revertsWithReason("Mock on the method is not initialized");
         await shareA.mock.transferFrom.revertsWithReason("Mock on the method is not initialized");
         await shareB.mock.transferFrom.revertsWithReason("Mock on the method is not initialized");
-        await usdc.mint(user1.address, USER1_USDC);
-        await usdc.mint(user2.address, USER2_USDC);
-        await usdc.mint(user3.address, USER3_USDC);
-        await usdc.connect(user1).approve(exchange.address, USER1_USDC);
-        await usdc.connect(user2).approve(exchange.address, USER2_USDC);
-        await usdc.connect(user3).approve(exchange.address, USER3_USDC);
+        await usdc.mint(user1.address, USER1_USDC.div(USDC_TO_ETHER));
+        await usdc.mint(user2.address, USER2_USDC.div(USDC_TO_ETHER));
+        await usdc.mint(user3.address, USER3_USDC.div(USDC_TO_ETHER));
+        await usdc.connect(user1).approve(exchange.address, USER1_USDC.div(USDC_TO_ETHER));
+        await usdc.connect(user2).approve(exchange.address, USER2_USDC.div(USDC_TO_ETHER));
+        await usdc.connect(user3).approve(exchange.address, USER3_USDC.div(USDC_TO_ETHER));
 
         await votingEscrow.mock.getTimestampDropBelow.returns(startEpoch + EPOCH * 500);
         await exchange.connect(user1).applyForMaker();
@@ -269,7 +269,7 @@ describe("Exchange", function () {
         it("Should transfer USDC", async function () {
             for (const { tranche } of tranche_list) {
                 await expect(() =>
-                    exchange.placeBid(tranche, 1, parseUsdc("100"), 0, 0)
+                    exchange.placeBid(tranche, 1, parseEther("100"), 0, 0)
                 ).to.changeTokenBalances(
                     usdc,
                     [user1, exchange],
@@ -280,28 +280,28 @@ describe("Exchange", function () {
 
         it("Should update best bid premium-discount level", async function () {
             for (const { tranche } of tranche_list) {
-                await exchange.placeBid(tranche, 41, parseUsdc("100"), 0, 0);
+                await exchange.placeBid(tranche, 41, parseEther("100"), 0, 0);
                 expect(await exchange.bestBids(0, tranche)).to.equal(41);
-                await exchange.placeBid(tranche, 61, parseUsdc("100"), 0, 0);
+                await exchange.placeBid(tranche, 61, parseEther("100"), 0, 0);
                 expect(await exchange.bestBids(0, tranche)).to.equal(61);
-                await exchange.placeBid(tranche, 51, parseUsdc("100"), 0, 0);
+                await exchange.placeBid(tranche, 51, parseEther("100"), 0, 0);
                 expect(await exchange.bestBids(0, tranche)).to.equal(61);
             }
         });
 
         it("Should append order to order queue", async function () {
             for (const { tranche } of tranche_list) {
-                await exchange.placeBid(tranche, 41, parseUsdc("100"), 0, 0);
+                await exchange.placeBid(tranche, 41, parseEther("100"), 0, 0);
                 const order1 = await exchange.getBidOrder(0, tranche, 41, 1);
                 expect(order1.maker).to.equal(addr1);
-                expect(order1.amount).to.equal(parseUsdc("100"));
-                expect(order1.fillable).to.equal(parseUsdc("100"));
+                expect(order1.amount).to.equal(parseEther("100"));
+                expect(order1.fillable).to.equal(parseEther("100"));
 
-                await exchange.connect(user2).placeBid(tranche, 41, parseUsdc("200"), 0, 0);
+                await exchange.connect(user2).placeBid(tranche, 41, parseEther("200"), 0, 0);
                 const order2 = await exchange.getBidOrder(0, tranche, 41, 2);
                 expect(order2.maker).to.equal(addr2);
-                expect(order2.amount).to.equal(parseUsdc("200"));
-                expect(order2.fillable).to.equal(parseUsdc("200"));
+                expect(order2.amount).to.equal(parseEther("200"));
+                expect(order2.fillable).to.equal(parseEther("200"));
             }
         });
     });
@@ -331,7 +331,7 @@ describe("Exchange", function () {
                 "Invalid premium-discount level"
             );
 
-            await exchange.placeBid(TRANCHE_P, 41, parseUsdc("100"), 0, 0);
+            await exchange.placeBid(TRANCHE_P, 41, parseEther("100"), 0, 0);
             await expect(exchange.placeAsk(TRANCHE_P, 41, MIN_ASK_AMOUNT, 0, 0)).to.be.revertedWith(
                 "Invalid premium-discount level"
             );
@@ -396,11 +396,11 @@ describe("Exchange", function () {
     const ASK_2_PD_1 = parseEther("30");
     const ASK_3_PD_1 = parseEther("50");
     const ASK_1_PD_0 = parseEther("100");
-    const BID_1_PD_0 = parseUsdc("100");
-    const BID_1_PD_N1 = parseUsdc("50");
-    const BID_2_PD_N1 = parseUsdc("20");
-    const BID_3_PD_N1 = parseUsdc("30");
-    const BID_1_PD_N2 = parseUsdc("80");
+    const BID_1_PD_0 = parseEther("100");
+    const BID_1_PD_N1 = parseEther("50");
+    const BID_2_PD_N1 = parseEther("20");
+    const BID_3_PD_N1 = parseEther("30");
+    const BID_1_PD_N2 = parseEther("80");
 
     async function askOrderBookFixture(): Promise<FixtureData> {
         const f = await loadFixture(deployFixture);
@@ -504,9 +504,9 @@ describe("Exchange", function () {
         // in the best maker order.
         describe("Taker is completely filled with a single maker order", function () {
             const estimatedNav = parseEther("1.1");
-            const matchedUsdc = ASK_1_PD_0.div(2).div(USDC_TO_ETHER);
+            const matchedUsdc = ASK_1_PD_0.div(2);
+            const transferedUsdc = matchedUsdc.add(USDC_TO_ETHER).sub(1).div(USDC_TO_ETHER);
             const matchedShares = matchedUsdc
-                .mul(USDC_TO_ETHER)
                 .mul(MAKER_RESERVE_BPS)
                 .div(10000)
                 .mul(parseEther("1"))
@@ -521,7 +521,7 @@ describe("Exchange", function () {
                 await expect(buyTxBuilder).to.changeTokenBalances(
                     usdc,
                     [user1, exchange],
-                    [matchedUsdc.mul(-1), matchedUsdc]
+                    [transferedUsdc.mul(-1), transferedUsdc]
                 );
             });
 
@@ -557,13 +557,13 @@ describe("Exchange", function () {
         // in the best maker order. Estimated NAV is 0.9 and the maker order is completely filled.
         describe("A single maker is completely filled and the taker is partially filled", function () {
             const estimatedNav = parseEther("0.9");
-            const matchedUsdc = ASK_1_PD_0.div(USDC_TO_ETHER)
-                .mul(estimatedNav)
+            const matchedUsdc = ASK_1_PD_0.mul(estimatedNav)
                 .div(parseEther("1"))
                 .mul(10000)
                 .div(MAKER_RESERVE_BPS);
+            const transferedUsdc = matchedUsdc.add(USDC_TO_ETHER).sub(1).div(USDC_TO_ETHER);
             const matchedShares = ASK_1_PD_0;
-            const buyTxBuilder = () => exchange.buyP(0, 42, ASK_1_PD_0.div(USDC_TO_ETHER));
+            const buyTxBuilder = () => exchange.buyP(0, 42, ASK_1_PD_0);
 
             beforeEach(async function () {
                 await fund.mock.extrapolateNav.returns(estimatedNav, 0, 0);
@@ -573,7 +573,7 @@ describe("Exchange", function () {
                 await expect(buyTxBuilder).to.changeTokenBalances(
                     usdc,
                     [user1, exchange],
-                    [matchedUsdc.mul(-1), matchedUsdc]
+                    [transferedUsdc.mul(-1), transferedUsdc]
                 );
             });
 
@@ -613,20 +613,18 @@ describe("Exchange", function () {
         // Buy shares with 200 USDC at premium 2%. Estimated NAV is 1.
         // All orders at 0% and 1% are filled. The order at 2% is partially filled.
         describe("Fill orders at multiple premium-discount level", function () {
-            const matchedUsdc = parseUsdc("200");
-            const matchedUsdcAt0 = ASK_1_PD_0.div(USDC_TO_ETHER).mul(10000).div(MAKER_RESERVE_BPS);
-            const matchedUsdcOrder1At1 = ASK_1_PD_1.div(USDC_TO_ETHER)
-                .mul(101)
+            const matchedUsdc = parseEther("200");
+            const transferedUsdc = parseUsdc("200");
+            const matchedUsdcAt0 = ASK_1_PD_0.mul(10000).div(MAKER_RESERVE_BPS);
+            const matchedUsdcOrder1At1 = ASK_1_PD_1.mul(101)
                 .div(100)
                 .mul(10000)
                 .div(MAKER_RESERVE_BPS);
-            const matchedUsdcOrder2At1 = ASK_2_PD_1.div(USDC_TO_ETHER)
-                .mul(101)
+            const matchedUsdcOrder2At1 = ASK_2_PD_1.mul(101)
                 .div(100)
                 .mul(10000)
                 .div(MAKER_RESERVE_BPS);
-            const matchedUsdcOrder3At1 = ASK_3_PD_1.div(USDC_TO_ETHER)
-                .mul(101)
+            const matchedUsdcOrder3At1 = ASK_3_PD_1.mul(101)
                 .div(100)
                 .mul(10000)
                 .div(MAKER_RESERVE_BPS);
@@ -635,7 +633,6 @@ describe("Exchange", function () {
                 .add(matchedUsdcOrder3At1);
             const matchedUsdcAt2 = matchedUsdc.sub(matchedUsdcAt0).sub(matchedUsdcAt1);
             const matchedSharesAt2 = matchedUsdcAt2
-                .mul(USDC_TO_ETHER)
                 .mul(MAKER_RESERVE_BPS)
                 .div(10000)
                 .mul(100)
@@ -650,7 +647,7 @@ describe("Exchange", function () {
                 await expect(buyTxBuilder).to.changeTokenBalances(
                     usdc,
                     [user1, exchange],
-                    [matchedUsdc.mul(-1), matchedUsdc]
+                    [transferedUsdc.mul(-1), transferedUsdc]
                 );
             });
 
@@ -761,13 +758,12 @@ describe("Exchange", function () {
         // in the best maker order.
         describe("Taker is completely filled with a single maker order", function () {
             const estimatedNav = parseEther("0.9");
-            const matchedShares = BID_1_PD_0.mul(USDC_TO_ETHER).div(2);
+            const matchedShares = BID_1_PD_0.div(2);
             const matchedUsdc = matchedShares
                 .mul(MAKER_RESERVE_BPS)
                 .div(10000)
                 .mul(estimatedNav)
-                .div(parseEther("1"))
-                .div(USDC_TO_ETHER);
+                .div(parseEther("1"));
             const sellTxBuilder = () => exchange.sellP(0, 33, matchedShares);
 
             beforeEach(async function () {
@@ -813,13 +809,12 @@ describe("Exchange", function () {
         // in the best maker order. Estimated NAV is 1.1 and the maker order is completely filled.
         describe("A single maker is completely filled and the taker is partially filled", function () {
             const estimatedNav = parseEther("1.1");
-            const matchedShares = BID_1_PD_0.mul(USDC_TO_ETHER)
-                .mul(parseEther("1"))
+            const matchedShares = BID_1_PD_0.mul(parseEther("1"))
                 .div(estimatedNav)
                 .mul(10000)
                 .div(MAKER_RESERVE_BPS);
             const matchedUsdc = BID_1_PD_0;
-            const sellTxBuilder = () => exchange.sellP(0, 40, BID_1_PD_0.mul(USDC_TO_ETHER));
+            const sellTxBuilder = () => exchange.sellP(0, 40, BID_1_PD_0);
 
             beforeEach(async function () {
                 await fund.mock.extrapolateNav.returns(estimatedNav, 0, 0);
@@ -869,21 +864,16 @@ describe("Exchange", function () {
         // All orders at 0% and -1% are filled. The order at -2% is partially filled.
         describe("Fill orders at multiple premium-discount level", function () {
             const matchedShares = parseEther("200");
-            const matchedSharesAt0 = BID_1_PD_0.mul(USDC_TO_ETHER)
-                .mul(10000)
-                .div(MAKER_RESERVE_BPS);
-            const matchedSharesOrder1AtN1 = BID_1_PD_N1.mul(USDC_TO_ETHER)
-                .mul(100)
+            const matchedSharesAt0 = BID_1_PD_0.mul(10000).div(MAKER_RESERVE_BPS);
+            const matchedSharesOrder1AtN1 = BID_1_PD_N1.mul(100)
                 .div(99)
                 .mul(10000)
                 .div(MAKER_RESERVE_BPS);
-            const matchedSharesOrder2AtN1 = BID_2_PD_N1.mul(USDC_TO_ETHER)
-                .mul(100)
+            const matchedSharesOrder2AtN1 = BID_2_PD_N1.mul(100)
                 .div(99)
                 .mul(10000)
                 .div(MAKER_RESERVE_BPS);
-            const matchedSharesOrder3AtN1 = BID_3_PD_N1.mul(USDC_TO_ETHER)
-                .mul(100)
+            const matchedSharesOrder3AtN1 = BID_3_PD_N1.mul(100)
                 .div(99)
                 .mul(10000)
                 .div(MAKER_RESERVE_BPS);
@@ -895,8 +885,7 @@ describe("Exchange", function () {
                 .mul(MAKER_RESERVE_BPS)
                 .div(10000)
                 .mul(98)
-                .div(100)
-                .div(USDC_TO_ETHER);
+                .div(100);
             const sellTxBuilder = () => exchange.sellP(0, 33, matchedShares);
 
             beforeEach(async function () {
