@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.6.9;
+pragma solidity >=0.6.10 <0.8.0;
 
 import "../utils/SafeDecimalMath.sol";
 
@@ -11,7 +11,7 @@ contract ChessController {
     function getFundRelativeWeight(
         address, /*account*/
         uint256 /*timestamp*/
-    ) external view returns (uint256 relativeWeight) {
+    ) external pure returns (uint256 relativeWeight) {
         relativeWeight = 1e18;
     }
 }
